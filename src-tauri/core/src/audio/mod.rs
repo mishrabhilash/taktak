@@ -10,8 +10,9 @@
 //! The callback sends back latency samples and everything it replaced (banks, preview clips),
 //! so nothing is ever freed or logged on the real-time thread. The stream's error callback can
 //! run on that thread too (macOS reports overloads from the IO thread), so it only counts and
-//! flags into atomics; the control side reads them with [`Engine::take_xruns`] and
-//! [`Engine::take_stream_fault`] and does the logging and recovery.
+//! flags into atomics; the control side reads them with [`Engine::take_xruns`],
+//! [`Engine::take_stream_fault`] and [`Engine::take_rerouted`] and does the logging and
+//! recovery.
 
 mod bank;
 mod mixer;
@@ -28,7 +29,8 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU8, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+use std::time::{Duration, Instant};
 
 const TRIGGER_RING: usize = 256;
 const COMMAND_RING: usize = 64;
@@ -50,8 +52,9 @@ enum Command {
     StopPreview,
 }
 
-/// Allocations the callback let go of, returned to be dropped on the control side.
-#[allow(dead_code, reason = "payloads are never read, only dropped")]
+/// Allocations the callback let go of, returned to be dropped on the control side (or, for
+/// the last bank, handed back by [`Engine::stop`]).
+#[allow(dead_code, reason = "clips are never read, only dropped")]
 enum Garbage {
     Bank(Box<SoundBank>),
     Clip(Box<[f32]>),
@@ -137,7 +140,8 @@ impl StreamFault {
     }
 
     /// The fault a stream error means, if any. Glitches (xruns), automatic rerouting to a new
-    /// default device and a refused real-time priority leave the stream running.
+    /// default device (see [`Engine::take_rerouted`]) and a refused real-time priority leave
+    /// the stream running.
     fn of(kind: cpal::ErrorKind) -> Option<StreamFault> {
         use cpal::ErrorKind;
         match kind {
@@ -156,11 +160,18 @@ struct StreamHealth {
     /// The worst [`StreamFault`] since it was last taken, as its code (0 = none). Worst wins,
     /// so a later "rerouted" notice cannot hide that the device went away.
     fault: AtomicU8,
+    /// The backend moved the stream to a new default device since this was last taken. Kept
+    /// apart from `fault`: the stream still plays, so it never hides or outranks a fault.
+    rerouted: AtomicBool,
 }
 
 impl StreamHealth {
     fn new() -> StreamHealth {
-        StreamHealth { xruns: AtomicU32::new(0), fault: AtomicU8::new(0) }
+        StreamHealth {
+            xruns: AtomicU32::new(0),
+            fault: AtomicU8::new(0),
+            rerouted: AtomicBool::new(false),
+        }
     }
 
     /// The error callback. It may run on the real-time IO thread: atomics only, no logging,
@@ -170,6 +181,8 @@ impl StreamHealth {
         let kind = error.kind();
         if kind == cpal::ErrorKind::Xrun {
             self.xruns.fetch_add(1, Ordering::Relaxed);
+        } else if kind == cpal::ErrorKind::DeviceChanged {
+            self.rerouted.store(true, Ordering::Relaxed);
         } else if let Some(fault) = StreamFault::of(kind) {
             self.fault.fetch_max(fault.code(), Ordering::Relaxed);
         }
@@ -181,6 +194,10 @@ impl StreamHealth {
 
     fn take_fault(&self) -> Option<StreamFault> {
         StreamFault::from_code(self.fault.swap(0, Ordering::Relaxed))
+    }
+
+    fn take_rerouted(&self) -> bool {
+        self.rerouted.swap(false, Ordering::Relaxed)
     }
 }
 
@@ -260,19 +277,22 @@ const _: () = {
     assert_send::<TriggerSender>();
 };
 
-impl Engine {
-    /// Opens the default output device. `make_bank` receives the device sample rate so
-    /// samples can be resampled once, up front.
-    pub fn start(
-        config: EngineConfig,
-        make_bank: impl FnOnce(u32) -> SoundBank,
-    ) -> Result<(Engine, TriggerSender), AudioError> {
+/// The default output device and how [`Engine::start`] would open it.
+struct Output {
+    device: cpal::Device,
+    sample_format: SampleFormat,
+    stream_config: StreamConfig,
+    info: DeviceInfo,
+}
+
+impl Output {
+    fn default(buffer_frames: Option<u32>) -> Result<Output, AudioError> {
         let host = cpal::default_host();
         let device = host.default_output_device().ok_or_else(|| err("no output device"))?;
         let name = device.description().map(|d| d.name().to_owned()).unwrap_or_default();
         let supported = device.default_output_config().map_err(err)?;
 
-        let buffer_frames = config.buffer_frames.map(|want| match supported.buffer_size() {
+        let buffer_frames = buffer_frames.map(|want| match supported.buffer_size() {
             SupportedBufferSize::Range { min, max } => want.clamp(*min, *max),
             SupportedBufferSize::Unknown => want,
         });
@@ -287,6 +307,27 @@ impl Engine {
             channels: stream_config.channels,
             buffer_frames,
         };
+        Ok(Output { device, sample_format: supported.sample_format(), stream_config, info })
+    }
+}
+
+/// The default output device and the format [`Engine::start`] would open it with (for
+/// `buffer_frames`, see [`EngineConfig::buffer_frames`]), without opening a stream: for showing
+/// the device while no engine runs. Opening may still pick another device if the default
+/// changes in between.
+pub fn default_output(buffer_frames: Option<u32>) -> Result<DeviceInfo, AudioError> {
+    Output::default(buffer_frames).map(|output| output.info)
+}
+
+impl Engine {
+    /// Opens the default output device. `make_bank` receives the device sample rate so
+    /// samples can be resampled once, up front.
+    pub fn start(
+        config: EngineConfig,
+        make_bank: impl FnOnce(u32) -> SoundBank,
+    ) -> Result<(Engine, TriggerSender), AudioError> {
+        let Output { device, sample_format, stream_config, info } =
+            Output::default(config.buffer_frames)?;
 
         // The clock initializes its timebase on first use; do that here, not in the callback.
         let _ = clock::now_ns();
@@ -294,7 +335,7 @@ impl Engine {
         let (ctl, triggers, state) = connect(mixer, info.channels as usize, &config);
 
         let health = Arc::new(StreamHealth::new());
-        let stream = match supported.sample_format() {
+        let stream = match sample_format {
             SampleFormat::F32 => build::<f32>(&device, &stream_config, state, health.clone()),
             SampleFormat::I16 => build::<i16>(&device, &stream_config, state, health.clone()),
             SampleFormat::I32 => build::<i32>(&device, &stream_config, state, health.clone()),
@@ -316,6 +357,25 @@ impl Engine {
     /// Poll it from a timer; on `Some`, rebuild the engine (see [`StreamFault`]).
     pub fn take_stream_fault(&self) -> Option<StreamFault> {
         self.health.take_fault()
+    }
+
+    /// Whether the backend moved the stream to a new default output device since the last
+    /// call (macOS does this by itself when the user switches outputs, e.g. plugs in
+    /// headphones). The stream keeps playing, but [`Engine::info`] still describes the old
+    /// device and the requested buffer size may no longer apply: rebuild the engine to open the
+    /// new device at its own rate and buffer size.
+    pub fn take_rerouted(&self) -> bool {
+        self.health.take_rerouted()
+    }
+
+    /// Stops the stream and hands back the bank it was playing, so the next engine (after a
+    /// pause, or on a new device with the same rate) can start with it instead of decoding the
+    /// pack again. Waits up to `timeout` for the callback to give the bank up; `None` if it does
+    /// not (a stream that has failed no longer calls back). The stream stops either way.
+    pub fn stop(mut self, timeout: Duration) -> Option<SoundBank> {
+        let bank = self.ctl.take_bank(timeout);
+        drop(self);
+        bank
     }
 
     pub fn info(&self) -> &DeviceInfo {
@@ -390,6 +450,9 @@ struct Control {
     garbage: Consumer<Garbage>,
     settings: Arc<Settings>,
     metrics: Option<Consumer<LatencySample>>,
+    /// Bank swaps whose replaced bank has not come back through `garbage` yet (each swap
+    /// returns exactly one), so [`Control::take_bank`] knows which bank came back last.
+    banks_out: usize,
 }
 
 impl Control {
@@ -418,7 +481,32 @@ impl Control {
             return Err(bank);
         }
         self.push(Command::ReplaceBank(Box::new(bank)));
+        self.banks_out += 1;
         Ok(())
+    }
+
+    /// Swaps an empty bank in and waits up to `timeout` for the callback to return the bank
+    /// that was playing: the last one to come back once every swap in flight has answered.
+    /// `None` if the command ring is full or the callback does not answer in time.
+    fn take_bank(&mut self, timeout: Duration) -> Option<SoundBank> {
+        self.replace_bank(SoundBank::default()).ok()?;
+        let deadline = Instant::now() + timeout;
+        let mut last = None;
+        loop {
+            while let Ok(garbage) = self.garbage.pop() {
+                if let Garbage::Bank(bank) = garbage {
+                    self.banks_out = self.banks_out.saturating_sub(1);
+                    last = Some(bank);
+                }
+            }
+            if self.banks_out == 0 {
+                return last.map(|bank| *bank);
+            }
+            if Instant::now() >= deadline {
+                return None;
+            }
+            std::thread::sleep(Duration::from_millis(1));
+        }
     }
 
     fn preview(&mut self, clip: Box<[f32]>) -> Result<(), Box<[f32]>> {
@@ -438,7 +526,11 @@ impl Control {
     }
 
     fn collect_garbage(&mut self) {
-        while self.garbage.pop().is_ok() {}
+        while let Ok(garbage) = self.garbage.pop() {
+            if matches!(garbage, Garbage::Bank(_)) {
+                self.banks_out = self.banks_out.saturating_sub(1);
+            }
+        }
     }
 
     /// Drains the garbage ring (which is what upholds the `GARBAGE_RING` invariant), then
@@ -479,6 +571,7 @@ fn connect(
         garbage: garbage_rx,
         settings: settings.clone(),
         metrics: metrics_rx,
+        banks_out: 0,
     };
     let state = CallbackState {
         mixer,
@@ -861,19 +954,63 @@ mod tests {
         health.record(ErrorKind::RealtimeDenied.into());
         assert_eq!((health.take_xruns(), health.take_fault()), (2, None));
         assert_eq!(health.take_xruns(), 0);
+        // A reroute is reported once, on its own.
+        assert!(health.take_rerouted());
+        assert!(!health.take_rerouted());
 
         health.record(ErrorKind::StreamInvalidated.into());
         assert_eq!(health.take_fault(), Some(StreamFault::Invalidated));
+        assert!(!health.take_rerouted());
         // The worst fault survives later, milder notices until it is taken.
         health.record(ErrorKind::DeviceNotAvailable.into());
         health.record(ErrorKind::DeviceChanged.into());
         health.record(ErrorKind::StreamInvalidated.into());
         assert_eq!(health.take_fault(), Some(StreamFault::DeviceGone));
         assert_eq!(health.take_fault(), None);
+        assert!(health.take_rerouted(), "a reroute next to a fault is still reported");
         for kind in [ErrorKind::BackendError, ErrorKind::HostUnavailable, ErrorKind::Other] {
             health.record(cpal::Error::with_message(kind, "details"));
             assert_eq!(health.take_fault(), Some(StreamFault::Failed), "{kind:?}");
         }
+    }
+
+    /// Runs the "callback" (command handling only) on a thread until the returned flag is set.
+    fn run_callback(mut state: CallbackState) -> (Arc<AtomicBool>, std::thread::JoinHandle<()>) {
+        let stop = Arc::new(AtomicBool::new(false));
+        let flag = stop.clone();
+        let thread = std::thread::spawn(move || {
+            while !flag.load(Ordering::Acquire) {
+                state.drain(0);
+                std::thread::sleep(Duration::from_micros(200));
+            }
+        });
+        (stop, thread)
+    }
+
+    #[test]
+    fn take_bank_hands_back_the_newest_bank() {
+        let (mut ctl, _tx, state) = rig(bank(1, 0.1), 1);
+        // Two swaps the callback has not seen yet: the newest is the one that plays.
+        assert!(ctl.replace_bank(bank(2, 0.2)).is_ok());
+        assert!(ctl.replace_bank(bank(3, 0.3)).is_ok());
+        let (stop, thread) = run_callback(state);
+        let back = ctl.take_bank(Duration::from_secs(5)).expect("the callback answers");
+        assert_eq!(back.samples[0].len(), 3);
+        assert_eq!(ctl.banks_out, 0);
+        // The empty bank it left behind comes back next time.
+        let empty = ctl.take_bank(Duration::from_secs(5)).unwrap();
+        assert!(empty.samples.is_empty());
+        stop.store(true, Ordering::Release);
+        thread.join().unwrap();
+    }
+
+    #[test]
+    fn take_bank_gives_up_when_the_callback_is_gone() {
+        let (mut ctl, _tx, state) = rig(bank(1, 0.1), 1);
+        drop(state); // a failed stream: nobody takes commands any more
+        let started = Instant::now();
+        assert!(ctl.take_bank(Duration::from_millis(30)).is_none());
+        assert!(started.elapsed() >= Duration::from_millis(30));
     }
 
     /// The control side hammers the command ring while the "callback" checks, before every

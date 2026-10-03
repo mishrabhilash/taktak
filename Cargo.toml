@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["src-tauri/core", "tools/synth-packs", "tools/pack-maker"]
+members = ["src-tauri", "src-tauri/core", "tools/synth-packs", "tools/pack-maker"]
 
 [workspace.package]
 version = "0.1.0"

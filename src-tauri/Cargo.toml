@@ -1,0 +1,48 @@
+[package]
+name = "taktak"
+description = "TakTak: mechanical keyboard sounds as you type, from the menu bar or tray."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+default-run = "taktak"
+
+[lib]
+name = "taktak_lib"
+# Desktop only: no mobile targets, so no staticlib/cdylib.
+crate-type = ["rlib"]
+
+[[bin]]
+name = "taktak"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+taktak-core = { path = "core" }
+log = "0.4.34"
+rtrb = "0.4.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
+tauri-plugin-autostart = "2"
+tauri-plugin-global-shortcut = "2"
+tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
+
+[target.'cfg(unix)'.dependencies]
+# SIGTERM/SIGINT quit cleanly (settings saved), on Tauri's own tokio runtime.
+tokio = { version = "1", default-features = false, features = ["signal"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# `geteuid`, to trust only this user's single-instance socket (`src/instance.rs`).
+libc = "0.2.189"
+
+[target.'cfg(not(target_os = "macos"))'.dependencies]
+# Per user session there. On macOS it uses a socket in the shared /tmp, so `src/instance.rs`
+# replaces it.
+tauri-plugin-single-instance = "2"
+
+[dev-dependencies]
+tempfile = "3.27.0"

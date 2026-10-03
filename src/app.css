@@ -1,0 +1,359 @@
+/* TakTak UI: design tokens, base styles and the few shared control classes.
+   System fonts only, no remote anything (CSP default-src 'self'). Light and dark follow the
+   OS through prefers-color-scheme. Spacing sits on a 4/8 px grid. Avoids CSS newer than
+   macOS 11's WebKit where it matters (no :has, color-mix or nesting). */
+
+:root {
+  color-scheme: light dark;
+  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Text', 'Segoe UI', system-ui,
+    Ubuntu, Cantarell, 'Noto Sans', sans-serif;
+  --mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  --bg: #f5f5f7;
+  --bg-sidebar: #e8e8eb;
+  --bg-popover: #f4f4f6;
+  --surface: #ffffff;
+  --surface-2: #ececef;
+  --separator: rgba(0, 0, 0, 0.08);
+  --border: rgba(0, 0, 0, 0.14);
+  --text: #1d1d1f;
+  --text-2: #55555b;
+  --text-3: #6e6e74;
+  --hover: rgba(0, 0, 0, 0.05);
+  --press: rgba(0, 0, 0, 0.09);
+  --selected: rgba(0, 0, 0, 0.07);
+
+  /* The keycap orange. --accent marks controls (non-text, ≥ 3:1); --accent-strong carries
+     white text (≥ 4.5:1); --accent-text is orange text on the background. */
+  --accent: #e8692f;
+  --accent-strong: #c24c18;
+  --accent-strong-hover: #ad4113;
+  --accent-text: #b5450f;
+  --accent-soft: rgba(232, 105, 47, 0.12);
+  --on-accent: #ffffff;
+
+  --ok: #1f9d47;
+  --ok-text: #17703a;
+  --warning: #c27100;
+  --warning-bg: rgba(255, 159, 10, 0.13);
+  --warning-text: #7a4300;
+  --error: #d92d20;
+  --error-bg: rgba(255, 59, 48, 0.1);
+  --error-text: #a11b12;
+  --info: #0a6ad6;
+  --info-bg: rgba(10, 132, 255, 0.1);
+  --info-text: #0b4f9e;
+
+  --switch-off: rgba(0, 0, 0, 0.16);
+  --track: rgba(0, 0, 0, 0.12);
+  --thumb: #ffffff;
+  --thumb-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.18), 0 1px 3px rgba(0, 0, 0, 0.22);
+  --card-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.06);
+  --focus-ring: 0 0 0 3px rgba(232, 105, 47, 0.45);
+
+  --radius-s: 6px;
+  --radius-m: 8px;
+  --radius-l: 12px;
+
+  font-family: var(--font);
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1e1e20;
+    --bg-sidebar: #2a2a2d;
+    --bg-popover: #232326;
+    --surface: #2c2c2f;
+    --surface-2: #38383c;
+    --separator: rgba(255, 255, 255, 0.08);
+    --border: rgba(255, 255, 255, 0.14);
+    --text: #f2f2f4;
+    --text-2: #b4b4ba;
+    --text-3: #9a9aa0;
+    --hover: rgba(255, 255, 255, 0.06);
+    --press: rgba(255, 255, 255, 0.11);
+    --selected: rgba(255, 255, 255, 0.09);
+
+    --accent: #ff7d42;
+    --accent-strong: #c24c18;
+    --accent-strong-hover: #ad4113;
+    --accent-text: #ff9c6b;
+    --accent-soft: rgba(255, 125, 66, 0.16);
+
+    --ok: #32d15a;
+    --ok-text: #5ee07f;
+    --warning: #ffb340;
+    --warning-bg: rgba(255, 179, 64, 0.14);
+    --warning-text: #ffcf85;
+    --error: #ff6159;
+    --error-bg: rgba(255, 97, 89, 0.14);
+    --error-text: #ff9f99;
+    --info: #4da3ff;
+    --info-bg: rgba(77, 163, 255, 0.14);
+    --info-text: #9ccaff;
+
+    --switch-off: rgba(255, 255, 255, 0.2);
+    --track: rgba(255, 255, 255, 0.16);
+    --thumb: #e9e9ec;
+    --thumb-shadow: 0 0 0 0.5px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.5);
+    --card-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.06), 0 1px 2px rgba(0, 0, 0, 0.3);
+    --focus-ring: 0 0 0 3px rgba(255, 125, 66, 0.5);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+#app {
+  height: 100%;
+}
+
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+button,
+input {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: default;
+}
+
+:focus {
+  outline: none;
+}
+
+:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+/* Text the user may want to copy: paths, problems, credits. */
+.selectable {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
+.mono {
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Buttons: macOS push-button proportions. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 12px;
+  border: 0.5px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  box-shadow: 0 0.5px 1px rgba(0, 0, 0, 0.08);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 0.12s;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-2);
+}
+
+.btn:active:not(:disabled) {
+  background: var(--press);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+}
+
+.btn:focus-visible {
+  box-shadow: var(--focus-ring);
+}
+
+.btn.primary {
+  border-color: transparent;
+  background: var(--accent-strong);
+  color: var(--on-accent);
+}
+
+.btn.primary:hover:not(:disabled),
+.btn.primary:active:not(:disabled) {
+  background: var(--accent-strong-hover);
+}
+
+.btn.plain {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+}
+
+.btn.plain:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.btn.plain:active:not(:disabled) {
+  background: var(--press);
+}
+
+.btn.small {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+/* Settings section heading. */
+.section-header {
+  margin-bottom: 16px;
+}
+
+.section-header h1 {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.section-header p {
+  margin-top: 4px;
+  color: var(--text-2);
+}
+
+/* Grouped rows, like System Settings. */
+.group {
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  box-shadow: var(--card-shadow);
+}
+
+.group + .group,
+.group-title + .group {
+  margin-top: 8px;
+}
+
+.group-title {
+  margin: 24px 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  padding: 10px 12px;
+}
+
+.row + .row {
+  border-top: 0.5px solid var(--separator);
+}
+
+.row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.row-label {
+  display: block;
+  font-weight: 500;
+}
+
+.hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* Small pills: license, origin, features. */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 10.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.badge.accent {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+
+.badge.warning {
+  background: var(--warning-bg);
+  color: var(--warning-text);
+}
+
+.badge.error {
+  background: var(--error-bg);
+  color: var(--error-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
+}

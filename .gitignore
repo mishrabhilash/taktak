@@ -4,3 +4,6 @@ dist/
 .DS_Store
 __pycache__/
 *.pyc
+/src-tauri/gen/schemas
+.claude/
+src-tauri/gen/schemas/

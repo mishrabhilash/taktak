@@ -1,7 +1,7 @@
 //! Discovers packs in the bundled and user folders, resolves id overrides, and hot-reloads
 //! the user folder when it changes.
 
-use super::{PackError, PackInfo, PackOrigin, Problem};
+use super::{PackError, PackInfo, PackOrigin, Problem, printable};
 use std::collections::HashMap;
 use std::ffi::{OsStr, OsString};
 use std::fs;
@@ -206,7 +206,7 @@ fn discover(dir: &Path, origin: PackOrigin, out: &mut Vec<(PathBuf, PackOrigin)>
         Ok(entries) => entries,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return,
         Err(e) => {
-            log::warn!("cannot read pack folder {}: {e}", dir.display());
+            log::warn!("cannot read pack folder {}: {e}", printable(&dir.display().to_string()));
             return;
         }
     };
@@ -437,7 +437,10 @@ impl FsWatch {
                 Ok(()) => {
                     self.links.insert(target, is_dir);
                 }
-                Err(e) => log::warn!("cannot watch linked pack {}: {e}", target.display()),
+                Err(e) => log::warn!(
+                    "cannot watch linked pack {}: {e}",
+                    printable(&target.display().to_string())
+                ),
             }
         }
     }
@@ -467,7 +470,8 @@ pub fn watch(
     let mut notify_watcher =
         notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
             if let Err(e) = &res {
-                log::warn!("pack folder watch error: {e}");
+                // Watch errors can name files in the user folder.
+                log::warn!("pack folder watch error: {}", printable(&e.to_string()));
             }
             if needs_rescan(&res) {
                 let _ = fs_tx.send(WatchMsg::Changed);

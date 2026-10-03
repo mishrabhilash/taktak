@@ -24,7 +24,7 @@
                                 preview, stop preview            │                   │  (garbage ring);
                                                                  │                   │  latency samples
                             ┌────────────────────────────────────┴───────────────────▼────┐
-                            │ control (main/Tauri thread): pack registry + loader,        │
+                            │ control (app threads, not main/UI): pack registry + loader, │
                             │ settings, rules, frontmost-app watcher, stats               │
                             └─────────────────────────────────────────────────────────────┘
 ```
@@ -74,9 +74,14 @@
   `COMMAND_RING + 2` so that push can never fail; the control side drains it before every
   command and on `Engine::collect_garbage`. Latency samples go back on their own ring.
   cpal's stream-error callback (which can run on the audio IO thread) also only touches
-  atomics: an xrun counter and a "worst fault" code, read with `Engine::take_xruns` and
-  `Engine::take_stream_fault`. On a fault (`Invalidated`, `DeviceGone`, `Failed`) the control
-  side rebuilds the engine.
+  atomics: an xrun counter, a "worst fault" code and a "rerouted" flag, read with
+  `Engine::take_xruns`, `Engine::take_stream_fault` and `Engine::take_rerouted`. On a fault
+  (`Invalidated`, `DeviceGone`, `Failed`) the control side rebuilds the engine. A reroute is
+  not a fault: macOS moves a default-device stream to the new default device by itself (cpal
+  reports `DeviceChanged`) and it keeps playing, but at the old device's settings, with the
+  requested buffer size no longer applied. The control side then reopens the engine on the new
+  device too. `Engine::stop` hands back the bank that was playing, so a reopen at the same
+  rate needs no decode.
 - **Control side**: owns the `PackRegistry` (scans the bundled and user folders, resolves id
   overrides, hot-reloads the user folder and the targets of symlinked packs through a
   `notify` watcher, and reports `Added`/`Updated`/`Removed`/`Invalid`/`InvalidCleared`
@@ -84,7 +89,13 @@
   (`pack::load`) decodes every referenced file once to mono f32 at the device rate, then sends
   the finished `SoundBank` with `Engine::replace_bank` and, for "click to hear", the decoded
   preview clip with `Engine::preview`. It also evaluates per-app rules and lock/device-change
-  state and flips the atomic gate.
+  state and flips the atomic gate. In the app (`src-tauri`) this is the `taktak-control`
+  thread (engine, listener, registry and watcher; asleep unless a message or a ≤ 4 Hz poll is
+  due). It opens the engine and the listener only while a key press can make a sound (sounds
+  on, not muted, permission granted) or a preview plays, and closes them otherwise. Decoding
+  runs on `taktak-loader`, settings writes on `taktak-settings` and
+  `state-changed` broadcasts on `taktak-events`. The Tauri main thread only runs commands,
+  window and tray work, and never waits on them (see `docs/ui-contract.md`, `docs/app.md`).
 
 ## A key press, end to end
 
@@ -194,5 +205,11 @@ hook thread being scheduled). The hook thread therefore runs at `QOS_CLASS_USER_
 
 Always-on stream: keeping the output stream open is what makes ~5 ms possible. Cold-starting
 it on a keypress costs 30+ ms (seen as the first-trigger outlier during testing). The open
-stream also keeps the audio device awake (small battery cost). Planned mitigation: suspend the
-stream after N minutes without keystrokes and accept one slow first click on resume.
+stream also keeps the audio device awake: measured on a MacBook Pro (built-in speakers,
+macOS 26), `coreaudiod` uses 5–9 % of one core while any output stream runs, whatever the
+buffer size (64 to 512 frames, silence), against 0 % with none; TakTak's own process stays at
+≈ 0.3 %. The app therefore closes the stream (and the key listener) whenever no key press can
+make a sound: sounds off, muted, or no permission. The decoded bank is kept, so reopening costs
+only the ~0.1 s the device takes to open, at the moment the user turns sounds back on. Still
+planned: suspend the stream after N minutes without keystrokes too, and accept one slow first
+click on resume.
