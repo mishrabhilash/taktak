@@ -1,0 +1,222 @@
+{
+ "noise_floor_db": -50.03,
+ "strokes_found": 306,
+ "cuts": [
+  {
+   "file": "press-01.wav",
+   "start": 75039,
+   "end": 77208,
+   "fade_out": 288,
+   "source_peak_dbfs": -16.15,
+   "attack_ms": 1563.81,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-02.wav",
+   "start": 143946,
+   "end": 147504,
+   "fade_out": 288,
+   "source_peak_dbfs": -10.25,
+   "attack_ms": 2999.38,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-03.wav",
+   "start": 158728,
+   "end": 162180,
+   "fade_out": 288,
+   "source_peak_dbfs": -15.68,
+   "attack_ms": 3307.33,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-04.wav",
+   "start": 166041,
+   "end": 168828,
+   "fade_out": 288,
+   "source_peak_dbfs": -15.18,
+   "attack_ms": 3459.69,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-05.wav",
+   "start": 179466,
+   "end": 182976,
+   "fade_out": 288,
+   "source_peak_dbfs": -14.42,
+   "attack_ms": 3739.38,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-06.wav",
+   "start": 243008,
+   "end": 245912,
+   "fade_out": 384,
+   "source_peak_dbfs": -10.43,
+   "attack_ms": 5063.17,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-07.wav",
+   "start": 274947,
+   "end": 277707,
+   "fade_out": 384,
+   "source_peak_dbfs": -11.21,
+   "attack_ms": 5728.56,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-08.wav",
+   "start": 307748,
+   "end": 310632,
+   "fade_out": 288,
+   "source_peak_dbfs": -13.51,
+   "attack_ms": 6411.92,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-09.wav",
+   "start": 365669,
+   "end": 368640,
+   "fade_out": 288,
+   "source_peak_dbfs": -13.25,
+   "attack_ms": 7618.6,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-10.wav",
+   "start": 380661,
+   "end": 383757,
+   "fade_out": 384,
+   "source_peak_dbfs": -11.12,
+   "attack_ms": 7930.94,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-11.wav",
+   "start": 426552,
+   "end": 428640,
+   "fade_out": 384,
+   "source_peak_dbfs": -16.29,
+   "attack_ms": 8887.0,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-12.wav",
+   "start": 718466,
+   "end": 722208,
+   "fade_out": 288,
+   "source_peak_dbfs": -10.8,
+   "attack_ms": 14968.54,
+   "thumb_click_included": false
+  },
+  {
+   "file": "press-13.wav",
+   "start": 738768,
+   "end": 741720,
+   "fade_out": 384,
+   "source_peak_dbfs": -16.32,
+   "attack_ms": 15391.5,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-press-01.wav",
+   "start": 136478,
+   "end": 138636,
+   "fade_out": 288,
+   "source_peak_dbfs": -6.63,
+   "attack_ms": 2843.79,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-press-02.wav",
+   "start": 211907,
+   "end": 213972,
+   "fade_out": 288,
+   "source_peak_dbfs": -7.19,
+   "attack_ms": 4415.23,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-press-03.wav",
+   "start": 252172,
+   "end": 255732,
+   "fade_out": 288,
+   "source_peak_dbfs": -13.16,
+   "attack_ms": 5254.08,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-press-04.wav",
+   "start": 517147,
+   "end": 520483,
+   "fade_out": 384,
+   "source_peak_dbfs": -11.84,
+   "attack_ms": 10774.4,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-press-05.wav",
+   "start": 528205,
+   "end": 531528,
+   "fade_out": 288,
+   "source_peak_dbfs": -3.17,
+   "attack_ms": 11004.77,
+   "thumb_click_included": true
+  },
+  {
+   "file": "space-press-06.wav",
+   "start": 577891,
+   "end": 580608,
+   "fade_out": 288,
+   "source_peak_dbfs": -4.11,
+   "attack_ms": 12039.9,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-press-07.wav",
+   "start": 638123,
+   "end": 640344,
+   "fade_out": 288,
+   "source_peak_dbfs": -10.13,
+   "attack_ms": 13294.73,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-release-01.wav",
+   "start": 140099,
+   "end": 141780,
+   "fade_out": 288,
+   "source_peak_dbfs": -14.11,
+   "attack_ms": 2919.23,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-release-02.wav",
+   "start": 215328,
+   "end": 216156,
+   "fade_out": 276,
+   "source_peak_dbfs": -8.56,
+   "attack_ms": 4486.5,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-release-03.wav",
+   "start": 438114,
+   "end": 439428,
+   "fade_out": 288,
+   "source_peak_dbfs": -10.74,
+   "attack_ms": 9127.88,
+   "thumb_click_included": false
+  },
+  {
+   "file": "space-release-04.wav",
+   "start": 557588,
+   "end": 558468,
+   "fade_out": 288,
+   "source_peak_dbfs": -11.69,
+   "attack_ms": 11616.92,
+   "thumb_click_included": false
+  }
+ ]
+}

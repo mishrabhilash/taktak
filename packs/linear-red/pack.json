@@ -1,0 +1,71 @@
+{
+  "format": 1,
+  "id": "linear-red",
+  "name": "Linear Red",
+  "version": "1.0.0",
+  "author": "C40115 (recording); packaged by TakTak contributors",
+  "license": "CC-BY-4.0",
+  "description": "Red linear switches on a Keychron V1 Ultra, typed at speed in a typing test and recorded with a laptop's built-in microphone: short letter clacks with a little room noise, and a deeper space bar with its own key-up sound. Sliced stroke by stroke from a CC BY 4.0 recording on Wikimedia Commons.",
+  "source": "https://commons.wikimedia.org/wiki/File:Typing_on_Keychron_V1_Ultra_(Red_Linear_Switch).wav",
+  "attribution": "Typing on Keychron V1 Ultra (Red Linear Switch) by C40115, CC BY 4.0, via Wikimedia Commons",
+  "preview": "preview.wav",
+  "volume": 0.94,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.015,
+    "volume": 0.06
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/press-01.wav",
+        "sounds/press-02.wav",
+        "sounds/press-03.wav",
+        "sounds/press-04.wav",
+        "sounds/press-05.wav",
+        "sounds/press-06.wav",
+        "sounds/press-07.wav",
+        "sounds/press-08.wav",
+        "sounds/press-09.wav",
+        "sounds/press-10.wav",
+        "sounds/press-11.wav",
+        "sounds/press-12.wav",
+        "sounds/press-13.wav"
+      ]
+    },
+    "space": {
+      "press": [
+        "sounds/space-press-01.wav",
+        "sounds/space-press-02.wav",
+        "sounds/space-press-03.wav",
+        "sounds/space-press-04.wav",
+        "sounds/space-press-05.wav",
+        "sounds/space-press-06.wav",
+        "sounds/space-press-07.wav"
+      ],
+      "release": [
+        "sounds/space-release-01.wav",
+        "sounds/space-release-02.wav",
+        "sounds/space-release-03.wav",
+        "sounds/space-release-04.wav"
+      ]
+    },
+    "enter": {
+      "press": [
+        "sounds/space-press-01.wav",
+        "sounds/space-press-02.wav",
+        "sounds/space-press-03.wav",
+        "sounds/space-press-04.wav",
+        "sounds/space-press-05.wav",
+        "sounds/space-press-06.wav",
+        "sounds/space-press-07.wav"
+      ],
+      "release": [
+        "sounds/space-release-01.wav",
+        "sounds/space-release-02.wav",
+        "sounds/space-release-03.wav",
+        "sounds/space-release-04.wav"
+      ]
+    }
+  }
+}

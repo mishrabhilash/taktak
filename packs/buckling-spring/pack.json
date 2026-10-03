@@ -1,0 +1,737 @@
+{
+  "format": 1,
+  "id": "buckling-spring",
+  "name": "Buckling Spring",
+  "version": "1.0.0",
+  "author": "Ico Doornekamp, packaged by TakTak contributors",
+  "license": "MIT",
+  "description": "The ping and clack of a buckling-spring keyboard, every key sampled on the way down and on the way back up, recorded by Ico Doornekamp on his IBM Model M space saver.",
+  "source": "https://github.com/zevv/bucklespring/tree/63b3d5b8ea84b426b466146ced5cbf85fe3bc0cb/wav",
+  "attribution": "Buckling-spring keyboard samples by Ico Doornekamp (bucklespring), MIT License",
+  "preview": "preview.wav",
+  "volume": 0.96,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.015,
+    "volume": 0.06
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/KeyA-press.wav",
+        "sounds/KeyS-press.wav",
+        "sounds/KeyD-press.wav",
+        "sounds/KeyF-press.wav",
+        "sounds/KeyJ-press.wav",
+        "sounds/KeyK-press.wav",
+        "sounds/KeyL-press.wav"
+      ],
+      "release": [
+        "sounds/KeyA-release.wav",
+        "sounds/KeyS-release.wav",
+        "sounds/KeyD-release.wav",
+        "sounds/KeyF-release.wav",
+        "sounds/KeyJ-release.wav",
+        "sounds/KeyK-release.wav",
+        "sounds/KeyL-release.wav"
+      ]
+    },
+    "enter": {
+      "press": [
+        "sounds/Enter-press.wav"
+      ],
+      "release": [
+        "sounds/Enter-release.wav"
+      ]
+    },
+    "modifiers": {
+      "press": [
+        "sounds/AltLeft-press.wav",
+        "sounds/AltRight-press.wav"
+      ],
+      "release": [
+        "sounds/AltLeft-release.wav",
+        "sounds/AltRight-release.wav"
+      ]
+    }
+  },
+  "keys": {
+    "AltLeft": {
+      "press": [
+        "sounds/AltLeft-press.wav"
+      ],
+      "release": [
+        "sounds/AltLeft-release.wav"
+      ]
+    },
+    "AltRight": {
+      "press": [
+        "sounds/AltRight-press.wav"
+      ],
+      "release": [
+        "sounds/AltRight-release.wav"
+      ]
+    },
+    "ArrowDown": {
+      "press": [
+        "sounds/ArrowDown-press.wav"
+      ],
+      "release": [
+        "sounds/ArrowDown-release.wav"
+      ]
+    },
+    "ArrowLeft": {
+      "press": [
+        "sounds/ArrowLeft-press.wav"
+      ],
+      "release": [
+        "sounds/ArrowLeft-release.wav"
+      ]
+    },
+    "ArrowRight": {
+      "press": [
+        "sounds/ArrowRight-press.wav"
+      ],
+      "release": [
+        "sounds/ArrowRight-release.wav"
+      ]
+    },
+    "ArrowUp": {
+      "press": [
+        "sounds/ArrowUp-press.wav"
+      ],
+      "release": [
+        "sounds/ArrowUp-release.wav"
+      ]
+    },
+    "Backquote": {
+      "press": [
+        "sounds/Backquote-press.wav"
+      ],
+      "release": [
+        "sounds/Backquote-release.wav"
+      ]
+    },
+    "Backslash": {
+      "press": [
+        "sounds/Backslash-press.wav"
+      ],
+      "release": [
+        "sounds/Backslash-release.wav"
+      ]
+    },
+    "Backspace": {
+      "press": [
+        "sounds/Backspace-press.wav"
+      ],
+      "release": [
+        "sounds/Backspace-release.wav"
+      ]
+    },
+    "BracketLeft": {
+      "press": [
+        "sounds/BracketLeft-press.wav"
+      ],
+      "release": [
+        "sounds/BracketLeft-release.wav"
+      ]
+    },
+    "BracketRight": {
+      "press": [
+        "sounds/BracketRight-press.wav"
+      ],
+      "release": [
+        "sounds/BracketRight-release.wav"
+      ]
+    },
+    "CapsLock": {
+      "press": [
+        "sounds/CapsLock-press.wav"
+      ],
+      "release": [
+        "sounds/CapsLock-release.wav"
+      ]
+    },
+    "Comma": {
+      "press": [
+        "sounds/Comma-press.wav"
+      ],
+      "release": [
+        "sounds/Comma-release.wav"
+      ]
+    },
+    "ControlLeft": {
+      "press": [
+        "sounds/ControlLeft-press.wav"
+      ],
+      "release": [
+        "sounds/ControlLeft-release.wav"
+      ]
+    },
+    "ControlRight": {
+      "press": [
+        "sounds/ControlRight-press.wav"
+      ],
+      "release": [
+        "sounds/ControlRight-release.wav"
+      ]
+    },
+    "Delete": {
+      "press": [
+        "sounds/Delete-press.wav"
+      ],
+      "release": [
+        "sounds/Delete-release.wav"
+      ]
+    },
+    "Digit0": {
+      "press": [
+        "sounds/Digit0-press.wav"
+      ],
+      "release": [
+        "sounds/Digit0-release.wav"
+      ]
+    },
+    "Digit1": {
+      "press": [
+        "sounds/Digit1-press.wav"
+      ],
+      "release": [
+        "sounds/Digit1-release.wav"
+      ]
+    },
+    "Digit2": {
+      "press": [
+        "sounds/Digit2-press.wav"
+      ],
+      "release": [
+        "sounds/Digit2-release.wav"
+      ]
+    },
+    "Digit3": {
+      "press": [
+        "sounds/Digit3-press.wav"
+      ],
+      "release": [
+        "sounds/Digit3-release.wav"
+      ]
+    },
+    "Digit4": {
+      "press": [
+        "sounds/Digit4-press.wav"
+      ],
+      "release": [
+        "sounds/Digit4-release.wav"
+      ]
+    },
+    "Digit5": {
+      "press": [
+        "sounds/Digit5-press.wav"
+      ],
+      "release": [
+        "sounds/Digit5-release.wav"
+      ]
+    },
+    "Digit6": {
+      "press": [
+        "sounds/Digit6-press.wav"
+      ],
+      "release": [
+        "sounds/Digit6-release.wav"
+      ]
+    },
+    "Digit7": {
+      "press": [
+        "sounds/Digit7-press.wav"
+      ],
+      "release": [
+        "sounds/Digit7-release.wav"
+      ]
+    },
+    "Digit8": {
+      "press": [
+        "sounds/Digit8-press.wav"
+      ],
+      "release": [
+        "sounds/Digit8-release.wav"
+      ]
+    },
+    "Digit9": {
+      "press": [
+        "sounds/Digit9-press.wav"
+      ],
+      "release": [
+        "sounds/Digit9-release.wav"
+      ]
+    },
+    "End": {
+      "press": [
+        "sounds/End-press.wav"
+      ],
+      "release": [
+        "sounds/End-release.wav"
+      ]
+    },
+    "Enter": {
+      "press": [
+        "sounds/Enter-press.wav"
+      ],
+      "release": [
+        "sounds/Enter-release.wav"
+      ]
+    },
+    "Equal": {
+      "press": [
+        "sounds/Equal-press.wav"
+      ],
+      "release": [
+        "sounds/Equal-release.wav"
+      ]
+    },
+    "Escape": {
+      "press": [
+        "sounds/Escape-press.wav"
+      ],
+      "release": [
+        "sounds/Escape-release.wav"
+      ]
+    },
+    "F1": {
+      "press": [
+        "sounds/F1-press.wav"
+      ],
+      "release": [
+        "sounds/F1-release.wav"
+      ]
+    },
+    "F10": {
+      "press": [
+        "sounds/F10-press.wav"
+      ],
+      "release": [
+        "sounds/F10-release.wav"
+      ]
+    },
+    "F11": {
+      "press": [
+        "sounds/F11-press.wav"
+      ],
+      "release": [
+        "sounds/F11-release.wav"
+      ]
+    },
+    "F12": {
+      "press": [
+        "sounds/F12-press.wav"
+      ],
+      "release": [
+        "sounds/F12-release.wav"
+      ]
+    },
+    "F2": {
+      "press": [
+        "sounds/F2-press.wav"
+      ],
+      "release": [
+        "sounds/F2-release.wav"
+      ]
+    },
+    "F3": {
+      "press": [
+        "sounds/F3-press.wav"
+      ],
+      "release": [
+        "sounds/F3-release.wav"
+      ]
+    },
+    "F4": {
+      "press": [
+        "sounds/F4-press.wav"
+      ],
+      "release": [
+        "sounds/F4-release.wav"
+      ]
+    },
+    "F5": {
+      "press": [
+        "sounds/F5-press.wav"
+      ],
+      "release": [
+        "sounds/F5-release.wav"
+      ]
+    },
+    "F6": {
+      "press": [
+        "sounds/F6-press.wav"
+      ],
+      "release": [
+        "sounds/F6-release.wav"
+      ]
+    },
+    "F7": {
+      "press": [
+        "sounds/F7-press.wav"
+      ],
+      "release": [
+        "sounds/F7-release.wav"
+      ]
+    },
+    "F8": {
+      "press": [
+        "sounds/F8-press.wav"
+      ],
+      "release": [
+        "sounds/F8-release.wav"
+      ]
+    },
+    "F9": {
+      "press": [
+        "sounds/F9-press.wav"
+      ],
+      "release": [
+        "sounds/F9-release.wav"
+      ]
+    },
+    "Home": {
+      "press": [
+        "sounds/Home-press.wav"
+      ],
+      "release": [
+        "sounds/Home-release.wav"
+      ]
+    },
+    "Insert": {
+      "press": [
+        "sounds/Insert-press.wav"
+      ],
+      "release": [
+        "sounds/Insert-release.wav"
+      ]
+    },
+    "KeyA": {
+      "press": [
+        "sounds/KeyA-press.wav"
+      ],
+      "release": [
+        "sounds/KeyA-release.wav"
+      ]
+    },
+    "KeyB": {
+      "press": [
+        "sounds/KeyB-press.wav"
+      ],
+      "release": [
+        "sounds/KeyB-release.wav"
+      ]
+    },
+    "KeyC": {
+      "press": [
+        "sounds/KeyC-press.wav"
+      ],
+      "release": [
+        "sounds/KeyC-release.wav"
+      ]
+    },
+    "KeyD": {
+      "press": [
+        "sounds/KeyD-press.wav"
+      ],
+      "release": [
+        "sounds/KeyD-release.wav"
+      ]
+    },
+    "KeyE": {
+      "press": [
+        "sounds/KeyE-press.wav"
+      ],
+      "release": [
+        "sounds/KeyE-release.wav"
+      ]
+    },
+    "KeyF": {
+      "press": [
+        "sounds/KeyF-press.wav"
+      ],
+      "release": [
+        "sounds/KeyF-release.wav"
+      ]
+    },
+    "KeyG": {
+      "press": [
+        "sounds/KeyG-press.wav"
+      ],
+      "release": [
+        "sounds/KeyG-release.wav"
+      ]
+    },
+    "KeyH": {
+      "press": [
+        "sounds/KeyH-press.wav"
+      ],
+      "release": [
+        "sounds/KeyH-release.wav"
+      ]
+    },
+    "KeyI": {
+      "press": [
+        "sounds/KeyI-press.wav"
+      ],
+      "release": [
+        "sounds/KeyI-release.wav"
+      ]
+    },
+    "KeyJ": {
+      "press": [
+        "sounds/KeyJ-press.wav"
+      ],
+      "release": [
+        "sounds/KeyJ-release.wav"
+      ]
+    },
+    "KeyK": {
+      "press": [
+        "sounds/KeyK-press.wav"
+      ],
+      "release": [
+        "sounds/KeyK-release.wav"
+      ]
+    },
+    "KeyL": {
+      "press": [
+        "sounds/KeyL-press.wav"
+      ],
+      "release": [
+        "sounds/KeyL-release.wav"
+      ]
+    },
+    "KeyM": {
+      "press": [
+        "sounds/KeyM-press.wav"
+      ],
+      "release": [
+        "sounds/KeyM-release.wav"
+      ]
+    },
+    "KeyN": {
+      "press": [
+        "sounds/KeyN-press.wav"
+      ],
+      "release": [
+        "sounds/KeyN-release.wav"
+      ]
+    },
+    "KeyO": {
+      "press": [
+        "sounds/KeyO-press.wav"
+      ],
+      "release": [
+        "sounds/KeyO-release.wav"
+      ]
+    },
+    "KeyP": {
+      "press": [
+        "sounds/KeyP-press.wav"
+      ],
+      "release": [
+        "sounds/KeyP-release.wav"
+      ]
+    },
+    "KeyQ": {
+      "press": [
+        "sounds/KeyQ-press.wav"
+      ],
+      "release": [
+        "sounds/KeyQ-release.wav"
+      ]
+    },
+    "KeyR": {
+      "press": [
+        "sounds/KeyR-press.wav"
+      ],
+      "release": [
+        "sounds/KeyR-release.wav"
+      ]
+    },
+    "KeyS": {
+      "press": [
+        "sounds/KeyS-press.wav"
+      ],
+      "release": [
+        "sounds/KeyS-release.wav"
+      ]
+    },
+    "KeyT": {
+      "press": [
+        "sounds/KeyT-press.wav"
+      ],
+      "release": [
+        "sounds/KeyT-release.wav"
+      ]
+    },
+    "KeyU": {
+      "press": [
+        "sounds/KeyU-press.wav"
+      ],
+      "release": [
+        "sounds/KeyU-release.wav"
+      ]
+    },
+    "KeyV": {
+      "press": [
+        "sounds/KeyV-press.wav"
+      ],
+      "release": [
+        "sounds/KeyV-release.wav"
+      ]
+    },
+    "KeyW": {
+      "press": [
+        "sounds/KeyW-press.wav"
+      ],
+      "release": [
+        "sounds/KeyW-release.wav"
+      ]
+    },
+    "KeyX": {
+      "press": [
+        "sounds/KeyX-press.wav"
+      ],
+      "release": [
+        "sounds/KeyX-release.wav"
+      ]
+    },
+    "KeyY": {
+      "press": [
+        "sounds/KeyY-press.wav"
+      ],
+      "release": [
+        "sounds/KeyY-release.wav"
+      ]
+    },
+    "KeyZ": {
+      "press": [
+        "sounds/KeyZ-press.wav"
+      ],
+      "release": [
+        "sounds/KeyZ-release.wav"
+      ]
+    },
+    "MetaLeft": {
+      "press": [
+        "sounds/AltRight-press.wav"
+      ],
+      "release": [
+        "sounds/AltRight-release.wav"
+      ]
+    },
+    "Minus": {
+      "press": [
+        "sounds/Minus-press.wav"
+      ],
+      "release": [
+        "sounds/Minus-release.wav"
+      ]
+    },
+    "PageDown": {
+      "press": [
+        "sounds/PageDown-press.wav"
+      ],
+      "release": [
+        "sounds/PageDown-release.wav"
+      ]
+    },
+    "PageUp": {
+      "press": [
+        "sounds/PageUp-press.wav"
+      ],
+      "release": [
+        "sounds/PageUp-release.wav"
+      ]
+    },
+    "Pause": {
+      "release": [
+        "sounds/Pause-release.wav"
+      ]
+    },
+    "Period": {
+      "press": [
+        "sounds/Period-press.wav"
+      ],
+      "release": [
+        "sounds/Period-release.wav"
+      ]
+    },
+    "PrintScreen": {
+      "press": [
+        "sounds/PrintScreen-press.wav"
+      ],
+      "release": [
+        "sounds/PrintScreen-release.wav"
+      ]
+    },
+    "Quote": {
+      "press": [
+        "sounds/Quote-press.wav"
+      ],
+      "release": [
+        "sounds/Quote-release.wav"
+      ]
+    },
+    "ScrollLock": {
+      "press": [
+        "sounds/ScrollLock-press.wav"
+      ],
+      "release": [
+        "sounds/ScrollLock-release.wav"
+      ]
+    },
+    "Semicolon": {
+      "press": [
+        "sounds/Semicolon-press.wav"
+      ],
+      "release": [
+        "sounds/Semicolon-release.wav"
+      ]
+    },
+    "ShiftLeft": {
+      "press": [
+        "sounds/ShiftLeft-press.wav"
+      ],
+      "release": [
+        "sounds/ShiftLeft-release.wav"
+      ]
+    },
+    "ShiftRight": {
+      "press": [
+        "sounds/ShiftRight-press.wav"
+      ],
+      "release": [
+        "sounds/ShiftRight-release.wav"
+      ]
+    },
+    "Slash": {
+      "press": [
+        "sounds/Slash-press.wav"
+      ],
+      "release": [
+        "sounds/Slash-release.wav"
+      ]
+    },
+    "Space": {
+      "press": [
+        "sounds/Space-press.wav"
+      ],
+      "release": [
+        "sounds/Space-release.wav"
+      ]
+    },
+    "Tab": {
+      "press": [
+        "sounds/Tab-press.wav"
+      ],
+      "release": [
+        "sounds/Tab-release.wav"
+      ]
+    }
+  }
+}

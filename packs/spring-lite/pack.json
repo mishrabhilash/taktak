@@ -1,0 +1,59 @@
+{
+  "format": 1,
+  "id": "spring-lite",
+  "name": "Spring Lite",
+  "version": "1.0.0",
+  "author": "Anonimski (recording); packaged by TakTak contributors",
+  "license": "CC0-1.0",
+  "description": "An IBM M2, the compact, lighter-built buckling-spring board: bright clicks, softer up-strokes and a resonant Enter, from a CC0 recording of one typed URL.",
+  "source": "https://commons.wikimedia.org/wiki/File:IBM_M2_sound.ogg",
+  "attribution": "“IBM M2 sound.ogg” by Anonimski, CC0 1.0, via Wikimedia Commons",
+  "preview": "preview.wav",
+  "volume": 0.74,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.015,
+    "volume": 0.06
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/press-01.wav",
+        "sounds/press-02.wav",
+        "sounds/press-03.wav",
+        "sounds/press-04.wav",
+        "sounds/press-05.wav",
+        "sounds/press-06.wav",
+        "sounds/press-07.wav",
+        "sounds/press-08.wav",
+        "sounds/press-09.wav",
+        "sounds/press-10.wav",
+        "sounds/press-11.wav",
+        "sounds/press-12.wav",
+        "sounds/press-13.wav",
+        "sounds/press-14.wav",
+        "sounds/press-15.wav"
+      ],
+      "release": [
+        "sounds/release-01.wav",
+        "sounds/release-02.wav",
+        "sounds/release-03.wav",
+        "sounds/release-04.wav",
+        "sounds/release-05.wav",
+        "sounds/release-06.wav",
+        "sounds/release-07.wav",
+        "sounds/release-08.wav",
+        "sounds/release-09.wav",
+        "sounds/release-10.wav"
+      ]
+    },
+    "enter": {
+      "press": [
+        "sounds/enter-press.wav"
+      ],
+      "release": [
+        "sounds/enter-release.wav"
+      ]
+    }
+  }
+}

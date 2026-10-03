@@ -1,0 +1,15 @@
+[package]
+name = "synth-packs"
+description = "Generates TakTak's bundled, procedurally synthesized sound packs, and measures any pack's typing loudness."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+taktak-core = { path = "../../src-tauri/core" }
+hound = "3.5.1"
+serde_json = "1.0.151"
+
+[dev-dependencies]
+tempfile = "3.27.0"

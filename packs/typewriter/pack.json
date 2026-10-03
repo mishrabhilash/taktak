@@ -1,0 +1,122 @@
+{
+  "format": 1,
+  "id": "typewriter",
+  "name": "Typewriter",
+  "version": "1.0.0",
+  "author": "Joseph Sardin (BigSoundBank.com); packaged by TakTak contributors",
+  "license": "CC0-1.0",
+  "description": "A portable manual typewriter, recorded on a Hermes Precisa 305: crisp type-bar strikes with their own type-bar return and escapement clicks, a soft space bar, the shift basket's thud on modifier press and release, and a carriage return on Enter, with the margin bell ringing first (the numpad's Enter returns without it).",
+  "source": "BigSoundBank (CC0): https://bigsoundbank.com/typewriter-5-s2838.html https://bigsoundbank.com/typewriter-6-s2839.html https://bigsoundbank.com/typewriter-7-s2840.html https://bigsoundbank.com/typewriter-8-s2841.html https://bigsoundbank.com/typewriter-key-s2842.html https://bigsoundbank.com/typewriter-space-s2843.html",
+  "attribution": "Typewriter recordings by Joseph Sardin (BigSoundBank.com), CC0",
+  "preview": "preview.wav",
+  "volume": 1.29,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.015,
+    "volume": 0.06
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/key-01.wav",
+        "sounds/key-02.wav",
+        "sounds/key-03.wav",
+        "sounds/key-04.wav",
+        "sounds/key-05.wav",
+        "sounds/key-06.wav",
+        "sounds/key-07.wav",
+        "sounds/key-08.wav",
+        "sounds/key-09.wav",
+        "sounds/key-10.wav",
+        "sounds/key-11.wav",
+        "sounds/key-12.wav",
+        "sounds/key-13.wav",
+        "sounds/key-14.wav",
+        "sounds/key-15.wav",
+        "sounds/key-16.wav",
+        "sounds/key-17.wav",
+        "sounds/key-18.wav",
+        "sounds/key-19.wav",
+        "sounds/key-20.wav",
+        "sounds/key-21.wav",
+        "sounds/key-22.wav",
+        "sounds/key-23.wav",
+        "sounds/key-24.wav",
+        "sounds/key-25.wav",
+        "sounds/key-26.wav",
+        "sounds/key-27.wav",
+        "sounds/key-28.wav",
+        "sounds/key-29.wav",
+        "sounds/key-30.wav",
+        "sounds/key-31.wav",
+        "sounds/key-32.wav",
+        "sounds/key-33.wav",
+        "sounds/key-34.wav",
+        "sounds/key-35.wav",
+        "sounds/key-36.wav",
+        "sounds/key-37.wav",
+        "sounds/key-38.wav",
+        "sounds/key-39.wav",
+        "sounds/key-40.wav",
+        "sounds/key-41.wav"
+      ]
+    },
+    "space": {
+      "press": [
+        "sounds/space-01.wav",
+        "sounds/space-02.wav",
+        "sounds/space-03.wav",
+        "sounds/space-04.wav",
+        "sounds/space-05.wav",
+        "sounds/space-06.wav",
+        "sounds/space-07.wav",
+        "sounds/space-08.wav",
+        "sounds/space-09.wav",
+        "sounds/space-10.wav",
+        "sounds/space-11.wav"
+      ]
+    },
+    "enter": {
+      "press": [
+        "sounds/enter-bell-1.wav",
+        "sounds/enter-bell-2.wav",
+        "sounds/enter-bell-3.wav",
+        "sounds/enter-return-1.wav",
+        "sounds/enter-return-2.wav",
+        "sounds/enter-return-3.wav",
+        "sounds/enter-return-4.wav",
+        "sounds/enter-return-5.wav",
+        "sounds/enter-return-6.wav"
+      ]
+    },
+    "backspace": {
+      "press": [
+        "sounds/space-01.wav",
+        "sounds/space-02.wav",
+        "sounds/space-03.wav",
+        "sounds/space-04.wav",
+        "sounds/space-05.wav",
+        "sounds/space-06.wav",
+        "sounds/space-07.wav",
+        "sounds/space-08.wav",
+        "sounds/space-09.wav",
+        "sounds/space-10.wav",
+        "sounds/space-11.wav"
+      ]
+    },
+    "modifiers": {
+      "press": [
+        "sounds/shift-down-1.wav",
+        "sounds/shift-down-2.wav",
+        "sounds/shift-down-3.wav",
+        "sounds/shift-down-4.wav"
+      ],
+      "release": [
+        "sounds/shift-up-1.wav",
+        "sounds/shift-up-2.wav",
+        "sounds/shift-up-3.wav",
+        "sounds/shift-up-4.wav"
+      ]
+    }
+  }
+}

@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "id": "key-press",
+  "name": "Key Press",
+  "version": "1.0.0",
+  "author": "eklee, qubodup and bluszcz; packaged by TakTak contributors",
+  "license": "CC-BY-3.0",
+  "description": "Real recorded key presses from three keyboards: light, crisp ticks on the letters, a deeper, older board thumping under Space, Backspace and the modifiers, and a sharp mechanical clack on Enter.",
+  "source": "https://opengameart.org/content/single-key-press-sounds ; https://opengameart.org/content/mechanical-keyboard-sound",
+  "attribution": "\"Single Key Press Sounds\" by eklee, qubodup (https://opengameart.org/content/single-key-press-sounds) and \"Mechanical keyboard sound\" by bluszcz (https://opengameart.org/content/mechanical-keyboard-sound), both CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). Sliced, mixed to mono and level-adjusted by TakTak contributors.",
+  "preview": "preview.wav",
+  "volume": 1.14,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.015,
+    "volume": 0.06
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/light-press-01.wav",
+        "sounds/light-press-02.wav",
+        "sounds/light-press-03.wav",
+        "sounds/light-press-04.wav",
+        "sounds/light-press-05.wav",
+        "sounds/light-press-06.wav",
+        "sounds/light-press-07.wav"
+      ],
+      "release": [
+        "sounds/light-release-01.wav",
+        "sounds/light-release-02.wav",
+        "sounds/light-release-04.wav",
+        "sounds/light-release-05.wav",
+        "sounds/light-release-06.wav",
+        "sounds/light-release-07.wav"
+      ]
+    },
+    "space": {
+      "press": [
+        "sounds/deep-press-01.wav",
+        "sounds/deep-press-02.wav"
+      ],
+      "release": [
+        "sounds/deep-release-01.wav"
+      ]
+    },
+    "backspace": {
+      "press": [
+        "sounds/deep-press-03.wav",
+        "sounds/deep-press-04.wav"
+      ],
+      "release": [
+        "sounds/deep-release-01.wav"
+      ]
+    },
+    "modifiers": {
+      "press": [
+        "sounds/deep-press-01.wav",
+        "sounds/deep-press-02.wav",
+        "sounds/deep-press-03.wav",
+        "sounds/deep-press-04.wav"
+      ],
+      "release": [
+        "sounds/deep-release-01.wav"
+      ]
+    },
+    "enter": {
+      "press": [
+        "sounds/clack-01.wav",
+        "sounds/clack-02.wav",
+        "sounds/clack-03.wav",
+        "sounds/clack-04.wav",
+        "sounds/clack-05.wav",
+        "sounds/clack-06.wav"
+      ]
+    }
+  }
+}

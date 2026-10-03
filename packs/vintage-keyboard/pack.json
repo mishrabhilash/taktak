@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "vintage-keyboard",
+  "name": "Vintage",
+  "version": "1.0.0",
+  "author": "jim-ph; packaged by TakTak contributors",
+  "license": "CC0-1.0",
+  "description": "Crisp clacks from a 1986 DOS-era mechanical keyboard: five keystrokes, each split into its own key-down and key-up, recorded with a condenser microphone.",
+  "source": "https://freesound.org/people/jim-ph/packs/12363/ (mirrored with its Freesound license.txt by https://github.com/yingDev/Tickeys)",
+  "attribution": "Recordings by jim-ph (Freesound, CC0 1.0), via Tickeys",
+  "preview": "preview.wav",
+  "volume": 0.88,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.02,
+    "volume": 0.08
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/press-1.wav",
+        "sounds/press-2.wav",
+        "sounds/press-3.wav",
+        "sounds/press-4.wav",
+        "sounds/press-5.wav"
+      ],
+      "release": [
+        "sounds/release-1.wav",
+        "sounds/release-2.wav",
+        "sounds/release-3.wav",
+        "sounds/release-4.wav",
+        "sounds/release-5.wav"
+      ]
+    }
+  }
+}

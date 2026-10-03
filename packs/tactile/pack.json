@@ -1,0 +1,62 @@
+{
+  "format": 1,
+  "id": "tactile",
+  "name": "Tactile",
+  "version": "1.0.0",
+  "author": "StavSounds, alpinemesh, yottasounds; packaged by TakTak contributors",
+  "license": "CC0-1.0",
+  "description": "Bright, snappy tactile switches: ten taps on a tactile mechanical keyboard, each split into its own key-down and key-up, plus an Enter recorded on a Corsair K70 RGB.",
+  "source": "Freesound: https://freesound.org/people/StavSounds/packs/42151/ https://freesound.org/people/alpinemesh/sounds/627647/ https://freesound.org/people/yottasounds/sounds/380141/ (previews mirrored by https://github.com/zordhalo/clatterbox)",
+  "attribution": "Recordings by StavSounds, alpinemesh and yottasounds (Freesound, CC0 1.0), via clatterbox",
+  "preview": "preview.wav",
+  "volume": 0.98,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.015,
+    "volume": 0.06
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/press-01.wav",
+        "sounds/press-03.wav",
+        "sounds/press-04.wav",
+        "sounds/press-05.wav",
+        "sounds/press-06.wav",
+        "sounds/press-07.wav",
+        "sounds/press-08.wav",
+        "sounds/press-09.wav",
+        "sounds/press-10.wav",
+        "sounds/press-11.wav"
+      ],
+      "release": [
+        "sounds/release-01.wav",
+        "sounds/release-03.wav",
+        "sounds/release-04.wav",
+        "sounds/release-05.wav",
+        "sounds/release-06.wav",
+        "sounds/release-07.wav",
+        "sounds/release-08.wav",
+        "sounds/release-09.wav",
+        "sounds/release-10.wav",
+        "sounds/release-11.wav"
+      ]
+    },
+    "enter": {
+      "press": [
+        "sounds/enter-press.wav"
+      ],
+      "release": [
+        "sounds/enter-release.wav"
+      ]
+    },
+    "backspace": {
+      "press": [
+        "sounds/backspace-press.wav"
+      ],
+      "release": [
+        "sounds/backspace-release.wav"
+      ]
+    }
+  }
+}

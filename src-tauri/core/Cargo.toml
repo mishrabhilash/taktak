@@ -1,0 +1,32 @@
+[package]
+name = "taktak-core"
+description = "TakTak core: global key listening, low-latency audio engine, sound packs."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+cpal = "0.18.2"
+dirs = "7.0.0"
+fastrand = "2.5.0"
+log = "0.4.34"
+notify = "8.2.0"
+rtrb = "0.4.0"
+rubato = "5.0.1"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+symphonia = { version = "0.6.1", default-features = false, features = ["wav", "pcm", "ogg", "vorbis", "mp3"] }
+zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
+
+[[bin]]
+name = "taktak-spike"
+path = "src/bin/taktak-spike.rs"
+
+[[bin]]
+name = "taktak-pack"
+path = "src/bin/taktak-pack.rs"
+
+[dev-dependencies]
+hound = "3.5.1"
+tempfile = "3.27.0"

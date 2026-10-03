@@ -1,0 +1,84 @@
+{
+  "format": 1,
+  "id": "ui-clicks",
+  "name": "UI Clicks",
+  "version": "1.0.0",
+  "author": "Kenney (kenney.nl); packaged by TakTak contributors",
+  "license": "CC0-1.0",
+  "description": "Not a keyboard: crisp interface switch clicks for letters, with softer switch-off clicks on key-up, a duller click for Space, a rising two-note blip for Enter, a soft click for Backspace and tiny ticks for the modifiers. Made from Kenney's CC0 UI Audio and Interface Sounds sets.",
+  "source": "https://kenney.nl/assets/ui-audio ; https://kenney.nl/assets/interface-sounds",
+  "attribution": "UI sounds by Kenney (kenney.nl), CC0",
+  "preview": "preview.wav",
+  "volume": 0.86,
+  "trim_silence": true,
+  "variation": {
+    "pitch": 0.02,
+    "volume": 0.08
+  },
+  "groups": {
+    "alphanumeric": {
+      "press": [
+        "sounds/click-01.wav",
+        "sounds/click-02.wav",
+        "sounds/click-03.wav",
+        "sounds/click-04.wav",
+        "sounds/click-05.wav",
+        "sounds/click-06.wav",
+        "sounds/click-07.wav",
+        "sounds/click-08.wav",
+        "sounds/click-09.wav",
+        "sounds/click-10.wav",
+        "sounds/click-11.wav",
+        "sounds/click-12.wav",
+        "sounds/click-13.wav"
+      ],
+      "release": [
+        "sounds/release-01.wav",
+        "sounds/release-02.wav",
+        "sounds/release-03.wav"
+      ]
+    },
+    "space": {
+      "press": [
+        "sounds/space-01.wav",
+        "sounds/space-02.wav",
+        "sounds/space-03.wav",
+        "sounds/space-04.wav"
+      ]
+    },
+    "enter": {
+      "press": [
+        "sounds/enter-01.wav",
+        "sounds/enter-02.wav"
+      ],
+      "release": [
+        "sounds/enter-release-01.wav",
+        "sounds/enter-release-02.wav",
+        "sounds/enter-release-03.wav"
+      ]
+    },
+    "backspace": {
+      "press": [
+        "sounds/backspace-01.wav",
+        "sounds/backspace-02.wav"
+      ],
+      "release": [
+        "sounds/backspace-release-01.wav",
+        "sounds/backspace-release-02.wav",
+        "sounds/backspace-release-03.wav"
+      ]
+    },
+    "modifiers": {
+      "press": [
+        "sounds/modifier-01.wav",
+        "sounds/modifier-02.wav",
+        "sounds/modifier-03.wav"
+      ],
+      "release": [
+        "sounds/modifier-release-01.wav",
+        "sounds/modifier-release-02.wav",
+        "sounds/modifier-release-03.wav"
+      ]
+    }
+  }
+}
