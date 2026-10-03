@@ -53,8 +53,8 @@ CEILING_DBFS = -0.5
 # file's true peak, raised by the pack's maximum random volume variation, must stay below this.
 MAX_TRUE_PEAK_DBFS = -1.0
 TRUE_PEAK_OVERSAMPLE = 4
-# Typing loudness every bundled pack is matched to with its pack.json "volume": the level of
-# the synthesized packs, as measured by `cargo run -p synth-packs --release -- loudness`.
+# Typing loudness every bundled pack is matched to with its pack.json "volume": TakTak's
+# reference typing level (a fixed constant), as measured by `cargo run -p synth-packs --release -- loudness`.
 REFERENCE_LK = -25.8
 # One keystroke's loudness is measured over this fixed window from its start, as synth-packs
 # does (tools/synth-packs/src/analysis.rs, k_energy).
@@ -417,7 +417,7 @@ def loudness_text(pack_id: str, volume: float, lk_as_built: float, volume_variat
         f"`volume` in `pack.json` is {volume:.2f} ({db(volume):+.1f} dB): a playback gain the "
         "app applies to the whole pack, so no audio file changes. Typing loudness is matched "
         "across the bundled packs so that switching packs does not jump in volume; the "
-        f"reference is the synthesized packs' {REFERENCE_LK:.1f} LK. Measured with "
+        f"target is TakTak's reference typing level, {REFERENCE_LK:.1f} LK. Measured with "
         f"`cargo run -p synth-packs --release -- loudness packs/{pack_id}` "
         "(`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the "
         "first 100 ms of the sample each alphanumeric key plays on press by default, "

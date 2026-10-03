@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { detectPlatform, permissionName } from './platform';
-import { BUILT_IN_SOUND, grantLabel, notices, playbackStatus, playingName } from './status';
+import {
+  BUILT_IN_SOUND,
+  actionLabel,
+  effectiveMuted,
+  grantLabel,
+  notices,
+  playbackStatus,
+  playingName,
+  silentIn,
+} from './status';
 import type { AppState, PackSummary } from './types';
 
 function state(top: Partial<AppState> = {}, enabled = true): AppState {
@@ -8,7 +17,7 @@ function state(top: Partial<AppState> = {}, enabled = true): AppState {
     version: '0.1.0',
     settings: {
       enabled,
-      packId: 'deep-thock',
+      packId: 'buckling-spring',
       masterVolume: 0.7,
       pressVolume: 1,
       releaseVolume: 1,
@@ -16,17 +25,25 @@ function state(top: Partial<AppState> = {}, enabled = true): AppState {
       humanize: 0.25,
       muteHotkey: null,
       launchAtLogin: false,
+      appRule: { mode: 'everywhere', apps: [] },
+      muteOnOutputChange: false,
+      onboardingDone: true,
     },
     muted: false,
     playing: true,
     packs: [],
     invalidPacks: [],
-    playingPackId: 'deep-thock',
+    playingPackId: 'buckling-spring',
     activePackError: null,
     muteHotkeyError: null,
     userPacksDir: null,
     permission: 'granted',
     audio: { device: 'Speakers', sampleRate: 48000, bufferFrames: 64, state: 'ok', message: null },
+    frontmostApp: { id: 'com.apple.Safari', name: 'Safari' },
+    ruleBlocked: false,
+    autoMute: null,
+    rulesSupported: true,
+    onboarding: { offer: false, permissionRequired: true, relaunchSuggested: false },
     ...top,
   };
 }
@@ -75,7 +92,7 @@ describe('notices', () => {
     const list = notices(state({ muteHotkeyError: 'The shortcut ⌘⌥⇧M is already in use.' }), 'mac');
     expect(list.map((n) => n.id)).toEqual(['hotkey']);
     expect(list[0]?.message).toContain('already in use');
-    expect(list[0]?.permissionAction).toBe(false);
+    expect(list[0]?.actions).toEqual([]);
   });
 
   it('is empty when all is well', () => {
@@ -85,7 +102,7 @@ describe('notices', () => {
   it('offers the permission button when Input Monitoring is missing', () => {
     const [n] = notices(state({ permission: 'denied', playing: false }), 'mac');
     expect(n?.id).toBe('permission');
-    expect(n?.permissionAction).toBe(true);
+    expect(n?.actions).toEqual(['permission', 'guide']);
     expect(n?.title).toContain('Input Monitoring');
   });
 
@@ -108,6 +125,182 @@ describe('notices', () => {
   });
 });
 
+describe('effectiveMuted and silentIn', () => {
+  it('the mute switch shows the manual mute or an outputChanged auto-mute, not a lock', () => {
+    expect(effectiveMuted(state())).toBe(false);
+    expect(effectiveMuted(state({ muted: true }))).toBe(true);
+    expect(effectiveMuted(state({ autoMute: 'outputChanged' }))).toBe(true);
+    expect(effectiveMuted(state({ autoMute: 'screenLocked' }))).toBe(false);
+  });
+
+  it('names the app in front, or "this app"', () => {
+    expect(silentIn(state())).toBe('Silent in Safari');
+    expect(silentIn(state({ frontmostApp: null }))).toBe('Silent in this app');
+  });
+});
+
+describe('playbackStatus (Milestone 4)', () => {
+  const silent = { playing: false } as const;
+
+  it('explains auto-mute and rules with the tray’s texts', () => {
+    expect(playbackStatus(state({ ...silent, autoMute: 'screenLocked' }), 'mac')).toEqual({
+      label: 'Muted — screen locked',
+      tone: 'off',
+    });
+    expect(playbackStatus(state({ ...silent, autoMute: 'outputChanged' }), 'mac').label).toBe(
+      'Muted — output device changed',
+    );
+    expect(playbackStatus(state({ ...silent, ruleBlocked: true }), 'mac').label).toBe(
+      'Silent in Safari',
+    );
+    expect(
+      playbackStatus(state({ ...silent, ruleBlocked: true, frontmostApp: null }), 'mac').label,
+    ).toBe('Silent in this app');
+  });
+
+  it('follows the contract’s order: off, muted, locked, output, permission, fault, rules, starting', () => {
+    const all: Partial<AppState> = {
+      ...silent,
+      muted: true,
+      autoMute: 'screenLocked',
+      permission: 'denied',
+      audio: FAULT,
+      ruleBlocked: true,
+    };
+    expect(playbackStatus(state(all, false), 'mac').label).toBe('Sounds off');
+    expect(playbackStatus(state(all), 'mac').label).toBe('Muted');
+    expect(playbackStatus(state({ ...all, muted: false }), 'mac').label).toBe(
+      'Muted — screen locked',
+    );
+    expect(
+      playbackStatus(state({ ...all, muted: false, autoMute: 'outputChanged' }), 'mac').label,
+    ).toBe('Muted — output device changed');
+    expect(playbackStatus(state({ ...all, muted: false, autoMute: null }), 'mac').label).toBe(
+      'Needs Input Monitoring',
+    );
+    expect(
+      playbackStatus(state({ ...all, muted: false, autoMute: null, permission: 'granted' }), 'mac')
+        .label,
+    ).toBe('No sound output');
+    const starting = { ...FAULT, state: 'starting' as const, message: null };
+    expect(
+      playbackStatus(
+        state({ ...all, muted: false, autoMute: null, permission: 'granted', audio: starting }),
+        'mac',
+      ).label,
+    ).toBe('Silent in Safari');
+    expect(
+      playbackStatus(
+        state({
+          ...all,
+          muted: false,
+          autoMute: null,
+          permission: 'granted',
+          audio: starting,
+          ruleBlocked: false,
+        }),
+        'mac',
+      ).label,
+    ).toBe('Starting audio…');
+  });
+});
+
+describe('notices (Milestone 4)', () => {
+  it('an output change offers Unmute and names the new device', () => {
+    const s = state({
+      playing: false,
+      autoMute: 'outputChanged',
+      audio: { device: 'AirPods Pro', sampleRate: 48000, bufferFrames: 64, state: 'ok', message: null },
+    });
+    const [n] = notices(s, 'mac');
+    expect(n?.id).toBe('automute');
+    expect(n?.actions).toEqual(['unmute']);
+    expect(n?.message).toBe(
+      'TakTak muted itself because the sound output changed to AirPods Pro. Unmute to keep typing sounds on this device.',
+    );
+    expect(n?.line).toContain('AirPods Pro');
+    const nameless = notices(state({ autoMute: 'outputChanged', audio: { ...FAULT, state: 'ok' } }), 'mac');
+    expect(nameless[0]?.message).not.toContain('null');
+  });
+
+  it('a screen lock is explained without a button (only unlocking clears it)', () => {
+    const [n] = notices(state({ playing: false, autoMute: 'screenLocked' }), 'mac');
+    expect(n?.id).toBe('automute');
+    expect(n?.title).toBe('Muted — screen locked');
+    expect(n?.actions).toEqual([]);
+  });
+
+  it('auto-mute and rules say nothing while sounds are off or muted by hand', () => {
+    for (const top of [{ muted: true }, {}]) {
+      const enabled = 'muted' in top;
+      for (const extra of [{ autoMute: 'screenLocked' as const }, { ruleBlocked: true }]) {
+        expect(notices(state({ playing: false, ...top, ...extra }, enabled), 'mac')).toEqual([]);
+      }
+    }
+  });
+
+  it('rules: an info notice with "Edit rules…", only when the rules are the reason', () => {
+    const [n] = notices(state({ playing: false, ruleBlocked: true }), 'mac');
+    expect(n).toMatchObject({ id: 'rules', tone: 'info', title: 'Silent in Safari', actions: ['rules'] });
+    expect(n?.line).toBe('Silent in Safari because of your per-app rules.');
+    expect(actionLabel('rules', 'mac')).toBe('Edit rules…');
+    // Permission missing or the output gone: those notices explain it instead.
+    const denied = notices(state({ playing: false, ruleBlocked: true, permission: 'denied' }), 'mac');
+    expect(denied.map((x) => x.id)).toEqual(['permission']);
+    const fault = notices(state({ playing: false, ruleBlocked: true, audio: FAULT }), 'mac');
+    expect(fault.map((x) => x.id)).toEqual(['audio']);
+    const locked = notices(state({ playing: false, ruleBlocked: true, autoMute: 'screenLocked' }), 'mac');
+    expect(locked.map((x) => x.id)).toEqual(['automute']);
+  });
+
+  it('a refused listener leads with Quit & Reopen', () => {
+    const [n] = notices(
+      state({
+        playing: false,
+        permission: 'denied',
+        onboarding: { offer: true, permissionRequired: true, relaunchSuggested: true },
+      }),
+      'mac',
+    );
+    expect(n?.actions).toEqual(['relaunch', 'guide']);
+    expect(n?.message).toContain('macOS needs TakTak to restart before it can listen.');
+    expect(actionLabel('relaunch', 'mac')).toBe('Quit & Reopen');
+  });
+
+  it('says key sounds are unavailable where there is no permission step', () => {
+    const s = state({
+      playing: false,
+      permission: 'unknown',
+      onboarding: { offer: false, permissionRequired: false, relaunchSuggested: false },
+    });
+    const [n] = notices(s, 'linux');
+    expect(n?.id).toBe('permission');
+    expect(n?.tone).toBe('info');
+    expect(n?.actions).toEqual([]);
+    expect(n?.title).toBe('Key sounds aren’t available on this system yet');
+    expect(n?.message).toContain('Linux');
+    expect(notices(s, 'mac')[0]?.title).toBe('Key sounds are turned off');
+    expect(playbackStatus(s, 'windows')).toEqual({ label: 'Key sounds unavailable', tone: 'off' });
+    // Still waiting where a permission would bring the listener.
+    const waiting = state({ playing: false, permission: 'unknown' });
+    expect(playbackStatus(waiting, 'mac').label).toBe('Waiting for Input Monitoring');
+    // Muted by hand still comes first.
+    expect(playbackStatus({ ...s, muted: true }, 'linux').label).toBe('Muted');
+  });
+
+  it('orders auto-mute first and rules last', () => {
+    const s = state({
+      playing: false,
+      autoMute: 'outputChanged',
+      activePackError: 'x',
+      muteHotkeyError: 'y',
+    });
+    expect(notices(s, 'mac').map((n) => n.id)).toEqual(['automute', 'pack', 'hotkey']);
+    const r = state({ playing: false, ruleBlocked: true, activePackError: 'x' });
+    expect(notices(r, 'mac').map((n) => n.id)).toEqual(['pack', 'rules']);
+  });
+});
+
 function pack(id: string, name: string): PackSummary {
   return {
     id,
@@ -124,26 +317,26 @@ function pack(id: string, name: string): PackSummary {
 }
 
 describe('playingName', () => {
-  const packs = [pack('deep-thock', 'Deep Thock'), pack('my-board', 'My Board')];
+  const packs = [pack('buckling-spring', 'Buckling Spring'), pack('my-board', 'My Board')];
 
   it('names the pack that plays, which is the selected one when all is well', () => {
-    expect(playingName(state({ packs }))).toBe('Deep Thock');
+    expect(playingName(state({ packs }))).toBe('Buckling Spring');
   });
 
   it('names the fallback pack, not the built-in click, when the selected pack is missing', () => {
     const s = state({
       packs,
-      playingPackId: 'deep-thock',
-      activePackError: 'The pack “gone” is not installed. Playing Deep Thock instead.',
+      playingPackId: 'buckling-spring',
+      activePackError: 'The pack “gone” is not installed. Playing Buckling Spring instead.',
     });
     s.settings.packId = 'gone';
-    expect(playingName(s)).toBe('Deep Thock');
+    expect(playingName(s)).toBe('Buckling Spring');
   });
 
   it('names the selected pack while its last working version keeps playing', () => {
     // A pack that broke on disk leaves the list but keeps playing: its id is all there is.
     const s = state({
-      packs: [pack('deep-thock', 'Deep Thock')],
+      packs: [pack('buckling-spring', 'Buckling Spring')],
       playingPackId: 'my-board',
       activePackError: 'My Board has errors … Its last working version keeps playing.',
     });

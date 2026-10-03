@@ -70,7 +70,7 @@ DUPLICATE_NCC = 0.95
 DUP_WINDOW = (round(0.002 * SR), round(0.040 * SR))  # samples before, after the peak
 DUP_MAX_LAG = 3
 # Playback level, written to pack.json as "volume"; it changes no audio file. It matches the
-# pack's typing loudness to the synthesized packs' REFERENCE_LK, so switching packs does not
+# pack's typing loudness to TakTak's reference typing level (REFERENCE_LK), so switching packs does not
 # jump in volume. Measured on the built pack with
 #     cargo run -p synth-packs --release -- loudness packs/office-classic
 # (tools/synth-packs/src/loudness.rs): LK_AS_BUILT at volume 1.0. Re-measure whenever the
@@ -526,8 +526,8 @@ original file):
 8. Written as 16-bit mono WAV at 44,100 Hz, the source rate (no resampling, no dither).
 9. Loudness: `volume` in `pack.json` is **{VOLUME:.2f}** ({db(VOLUME):+.1f} dB), a playback gain the
    app applies to the whole pack, so no audio file changes. It matches typing loudness across
-   the bundled packs, so switching packs does not jump in volume; the reference is the
-   synthesized packs' {REFERENCE_LK:.1f} LK. Measured with
+   the bundled packs, so switching packs does not jump in volume; the target is TakTak's
+   reference typing level, {REFERENCE_LK:.1f} LK. Measured with
    `cargo run -p synth-packs --release -- loudness packs/office-classic`
    (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first
    100 ms of the sample each alphanumeric key plays on press by default, power-averaged over

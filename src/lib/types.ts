@@ -21,6 +21,54 @@ export interface Settings {
   /** Tauri accelerator, e.g. "CommandOrControl+Alt+Shift+M"; null = none. */
   muteHotkey: string | null;
   launchAtLogin: boolean;
+  /** (M4) Per-app rules; default `{ mode: "everywhere", apps: [] }`. */
+  appRule: AppRule;
+  /** (M4) Auto-mute when the default output device changes; default false. */
+  muteOnOutputChange: boolean;
+  /** (M4) The onboarding window was closed at least once; default false. */
+  onboardingDone: boolean;
+}
+
+/**
+ * (M4) How per-app rules use the list: "everywhere" ignores it (default), "only" plays sounds
+ * only while a listed app is frontmost, "never" is silent while a listed app is frontmost.
+ */
+export type AppRuleMode = 'everywhere' | 'only' | 'never';
+
+/** (M4) An app as TakTak identifies it. */
+export interface AppRef {
+  /** macOS bundle identifier, e.g. "com.apple.Safari". */
+  id: string;
+  /** Display name, e.g. "Safari". */
+  name: string;
+}
+
+/**
+ * (M4) One listed app. An object rather than a bare id so per-app overrides (e.g. a pack or a
+ * volume) can be added later as optional fields, absent = follow the global setting, without
+ * migrating settings.json. Readers ignore fields they do not know.
+ */
+export interface AppRuleEntry {
+  /** macOS bundle identifier; unique within the list. */
+  id: string;
+  /** Display name when it was added (never empty: the id stands in). */
+  name: string;
+}
+
+/** (M4) Per-app rules: one list for both "only" and "never", in append order, at most 200. */
+export interface AppRule {
+  mode: AppRuleMode;
+  apps: AppRuleEntry[];
+}
+
+/** (M4) A pickable app (`list_running_apps`, `choose_app`). */
+export interface AppInfo {
+  /** Bundle identifier. */
+  id: string;
+  /** Localized display name. */
+  name: string;
+  /** "data:image/png;base64,…", 32 × 32 px (16 pt @2x); null = no icon (show a generic one). */
+  iconDataUrl: string | null;
 }
 
 export type PackOrigin = 'bundled' | 'user';
@@ -62,12 +110,32 @@ export interface AudioStatus {
   message: string | null;
 }
 
+/**
+ * (M4) Why TakTak muted itself. "screenLocked": the screen is locked or this user session is
+ * inactive; clears by itself on unlock. "outputChanged": the default output device changed while
+ * `muteOnOutputChange` was on; stays until the user unmutes (or turns sounds or the setting off).
+ */
+export type AutoMute = 'screenLocked' | 'outputChanged';
+
+/** (M4) What the onboarding window needs to know. */
+export interface OnboardingStatus {
+  /** Offer the onboarding: `!settings.onboardingDone`, or permission required and denied (live). */
+  offer: boolean;
+  /** The platform needs a permission the user grants (macOS with the key listener on). */
+  permissionRequired: boolean;
+  /** macOS reports access as granted but the key listener cannot start: suggest Quit & Reopen. */
+  relaunchSuggested: boolean;
+}
+
 export interface AppState {
   version: string;
   settings: Settings;
-  /** Hotkey/tray mute (separate from enabled). */
+  /** The manual mute: hotkey, tray, set_muted (separate from enabled). Auto-mute never changes it. */
   muted: boolean;
-  /** enabled && !muted && permission granted && audio ok. */
+  /**
+   * A key press makes a sound now: enabled && !muted && autoMute === null && !ruleBlocked &&
+   * permission granted && audio ok.
+   */
   playing: boolean;
   /** Sorted by name. */
   packs: PackSummary[];
@@ -84,6 +152,19 @@ export interface AppState {
   userPacksDir: string | null;
   permission: Permission;
   audio: AudioStatus;
+  /**
+   * (M4) The app in front now, TakTak's own windows excluded; null when unknown, without a
+   * bundle id, or when rules are unsupported. Current value only: never collect it into a history.
+   */
+  frontmostApp: AppRef | null;
+  /** (M4) `settings.appRule` silences `frontmostApp` right now. */
+  ruleBlocked: boolean;
+  /** (M4) Why TakTak muted itself; null = not auto-muted. */
+  autoMute: AutoMute | null;
+  /** (M4) Per-app rules work on this platform (macOS); elsewhere they are kept but ignored. */
+  rulesSupported: boolean;
+  /** (M4) */
+  onboarding: OnboardingStatus;
 }
 
 /** Timings only, never key identities. */
@@ -98,7 +179,7 @@ export interface LatencyReport {
 }
 
 /** Window labels; the UI picks its view from the label of the window it runs in. */
-export type WindowLabel = 'tray' | 'settings';
+export type WindowLabel = 'tray' | 'settings' | 'onboarding';
 
 /** Every command: its `invoke` arguments (`void` = none) and what it resolves with. */
 export interface Commands {
@@ -121,6 +202,17 @@ export interface Commands {
   open_permission_settings: { args: void; result: void };
   get_latency: { args: void; result: LatencyReport | null };
   quit: { args: void; result: void };
+  // Milestone 4
+  list_running_apps: { args: void; result: AppInfo[] };
+  choose_app: { args: void; result: AppInfo | null };
+  get_app_icons: { args: { ids: string[] }; result: Record<string, string | null> };
+  set_app_rule_mode: { args: { mode: AppRuleMode }; result: AppState };
+  add_rule_app: { args: { id: string; name: string }; result: AppState };
+  remove_rule_app: { args: { id: string }; result: AppState };
+  set_mute_on_output_change: { args: { enabled: boolean }; result: AppState };
+  open_onboarding: { args: void; result: void };
+  finish_onboarding: { args: void; result: AppState };
+  relaunch: { args: void; result: void };
 }
 
 export type Command = keyof Commands;

@@ -16,6 +16,9 @@ deep-thock/
 
 ## pack.json
 
+(The example is a pack as `tools/synth-packs` would generate it. Those synthesized packs are
+experimental and not bundled with TakTak.)
+
 ```json
 {
   "format": 1,
@@ -178,7 +181,7 @@ It loads each pack at 48 kHz like the app and reports, per pack:
   alphanumeric key, the K-weighted (ITU-R BS.1770) energy of the first 100 ms of the file it
   plays on press (the one it keeps, see [Sound sets](#sound-sets)), averaged as power over
   the keys, in LK, as stored and with the pack's `volume`, and its distance from the target
-  (default −25.8 LK, the synthesized packs);
+  (default −25.8 LK, TakTak's reference typing level);
 - the **true peak** (4x oversampled) of the loudest file any key can play (with random
   variants on, every file in its arrays), with `volume` and the top of the volume variation
   applied, and the largest `volume` that keeps it at or below −1 dBFS;
@@ -237,7 +240,8 @@ checks, and the loudness rule in `tools/synth-packs` (next to the measurement):
 - `LICENSE.txt` in the pack folder when the license requires its notice to travel with copies:
   MIT, BSD-2-Clause, BSD-3-Clause, ISC and Apache-2.0 (the license text), CC-BY-3.0 and
   CC-BY-4.0 (the credit line and a link to the license).
-- Typing loudness matches the synthesized packs (−25.8 LK, see [Loudness](#loudness)) within
+- Typing loudness matches TakTak's reference typing level (a fixed −25.8 LK, see
+  [Loudness](#loudness)) within
   0.5 dB, set with `volume` (or, beyond +6 dB, with gain in the pack's build), unless the
   loudest true peak would then exceed −1 dBFS at the top of the volume variation: such a pack
   plays at the largest clean `volume`, and its `SOURCES.md` states the shortfall (test

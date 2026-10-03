@@ -10,9 +10,11 @@
     "build": "vite build",
     "preview": "vite preview",
     "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
-    "test": "vitest run",
+    "test": "vitest run && npm run test:scripts",
+    "test:scripts": "node --test \"scripts/*.test.mjs\"",
     "tauri": "tauri",
-    "release": "node scripts/release.mjs"
+    "release": "node scripts/release.mjs",
+    "app": "node scripts/app.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.1"

@@ -1,14 +1,20 @@
-//! TakTak's Tauri app: the tray icon, the tray popover and settings windows, and the commands
-//! the UI calls (`docs/ui-contract.md`). Everything latency-sensitive lives in `taktak-core`;
-//! this crate runs on the main thread and ordinary worker threads, never on the audio
-//! callback or the input hook.
+//! TakTak's Tauri app: the tray icon, the tray popover, settings and onboarding windows, and
+//! the commands the UI calls (`docs/ui-contract.md`). Everything latency-sensitive lives in
+//! `taktak-core`; this crate runs on the main thread and ordinary worker threads, never on the
+//! audio callback or the input hook.
 //!
 //! - [`service`]: the state and the control thread that owns the engine, listener and packs
-//!   (logic in [`catalog`], [`input`], [`loader`], [`settings`]; all unit-tested).
+//!   (logic in [`catalog`], [`input`], [`loader`], [`settings`], [`rules`], [`automute`]; all
+//!   unit-tested).
+//! - [`apps`]: the macOS observers (frontmost app, screen lock, session), running apps, icons
+//!   and the app picker; stubs elsewhere.
 //! - [`commands`], [`tray`], [`windows`], [`hotkey`]: thin Tauri glue.
 //! - `instance` (macOS): one TakTak per user; a second launch hands over and exits.
+//!   [`relaunch`]: quitting and starting again without handing over.
 //! - [`selftest`]: `taktak --selftest`, a headless check for CI.
 
+pub mod apps;
+pub mod automute;
 pub mod catalog;
 pub mod commands;
 pub mod hotkey;
@@ -17,6 +23,8 @@ pub mod input;
 pub mod instance;
 pub mod loader;
 pub mod logging;
+pub mod relaunch;
+pub mod rules;
 pub mod selftest;
 pub mod service;
 pub mod settings;
@@ -25,16 +33,20 @@ pub mod system;
 pub mod tray;
 pub mod windows;
 
+use apps::SystemEvent;
+use automute::Event;
 use commands::STATE_CHANGED;
-use service::{Config, Notify, Service};
+use service::{Config, Notify, Service, Shared};
 use state::AppState;
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, RunEvent, Runtime};
 use tauri_plugin_autostart::ManagerExt;
 
 /// How long quitting waits for settings to be written and the audio to stop.
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(2);
+/// How long the onboarding decision at startup waits for the first permission check.
+const ONBOARDING_WAIT: Duration = Duration::from_secs(5);
 
 /// Builds and runs the app until the user quits, or runs the self-test (`--selftest`).
 pub fn run() {
@@ -50,9 +62,18 @@ pub fn run() {
         std::process::exit(selftest::run(&version, resources, &args));
     }
 
+    // A TakTak that `relaunch` started waits for the old one to exit instead of handing over.
+    let relaunched = relaunch::relaunched(&args);
+    if relaunched {
+        log::info!("restarted; waiting for the previous TakTak to exit");
+    }
+    let reopen_onboarding = relaunch::reopen_onboarding(&args);
+
     // Before anything starts: a second launch only hands over to the running instance.
     #[cfg(target_os = "macos")]
-    let instance = match instance::default_dir().map(|dir| instance::claim(&dir)) {
+    let wait = if relaunched { relaunch::LOCK_WAIT } else { Duration::ZERO };
+    #[cfg(target_os = "macos")]
+    let instance = match instance::default_dir().map(|dir| instance::claim(&dir, wait)) {
         Some(Ok(instance::Claim::First(instance))) => Some(instance),
         Some(Ok(instance::Claim::Second)) => {
             log::info!("TakTak is already running; asked it to show its settings window");
@@ -64,6 +85,15 @@ pub fn run() {
         }
         None => None,
     };
+
+    // The plugin below lets go at exit, before the old process ends: wait for that process.
+    #[cfg(not(target_os = "macos"))]
+    if relaunched
+        && let Some(dir) = relaunch::lock_dir()
+        && !relaunch::wait_for_previous(&dir, relaunch::LOCK_WAIT)
+    {
+        log::warn!("the previous TakTak is still running");
+    }
 
     let builder = tauri::Builder::default();
     // First, so a second launch hands over to the running instance before anything starts.
@@ -93,7 +123,15 @@ pub fn run() {
                     app.manage(instance);
                 }
             }
-            setup(app.handle())?;
+            #[cfg(not(target_os = "macos"))]
+            match relaunch::lock_dir().map(|dir| relaunch::ExitLock::hold(&dir)) {
+                Some(Ok(lock)) => {
+                    app.manage(lock);
+                }
+                Some(Err(e)) => log::warn!("a restart may not find TakTak gone: {e}"),
+                None => {}
+            }
+            setup(app.handle(), reopen_onboarding)?;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -116,6 +154,16 @@ pub fn run() {
             commands::open_permission_settings,
             commands::get_latency,
             commands::quit,
+            commands::list_running_apps,
+            commands::choose_app,
+            commands::get_app_icons,
+            commands::set_app_rule_mode,
+            commands::add_rule_app,
+            commands::remove_rule_app,
+            commands::set_mute_on_output_change,
+            commands::open_onboarding,
+            commands::finish_onboarding,
+            commands::relaunch,
         ])
         .build(context);
 
@@ -131,7 +179,11 @@ pub fn run() {
     app.run(|app, event| match event {
         // Closing the last window must not quit a tray app; only `quit` (code Some) does.
         RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
+        // Windows closing from here on are not closed by the user (onboarding stays not done).
+        RunEvent::ExitRequested { code: Some(_), .. } => windows::mark_exiting(),
         RunEvent::Exit => {
+            windows::mark_exiting();
+            apps::stop_observing();
             if let Some(service) = app.try_state::<Service>() {
                 service.shutdown(SHUTDOWN_TIMEOUT);
             }
@@ -182,8 +234,13 @@ fn quit_on_signals<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
-/// Loads the settings, starts the service, registers the hotkey and creates the tray.
-fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
+/// Loads the settings, starts the service, starts the macOS observers, registers the hotkey,
+/// creates the tray and opens the onboarding window if it is due (`reopen_onboarding`: a
+/// relaunch from that window asked for it). Runs on the main thread.
+fn setup<R: Runtime>(
+    app: &AppHandle<R>,
+    reopen_onboarding: bool,
+) -> Result<(), Box<dyn std::error::Error>> {
     let settings_path = app.path().app_config_dir()?.join(settings::FILE_NAME);
     let loaded = settings::load(&settings_path);
     if let Some(note) = &loaded.note {
@@ -224,10 +281,62 @@ fn setup<R: Runtime>(app: &AppHandle<R>) -> Result<(), Box<dyn std::error::Error
         service.update(|s| s.mute_hotkey_error = Some(hotkey::startup_error(&e)));
     }
 
+    observe_system(&service);
+    open_onboarding_when_due(app, service.handle(), reopen_onboarding);
+
     let state = service.snapshot();
     app.manage(service);
     tray::create(app, &state)?;
     Ok(())
+}
+
+/// Starts the macOS observers (frontmost app, screen lock, session) and reads the frontmost app
+/// once. Elsewhere per-app rules stay unsupported. Main thread.
+fn observe_system(service: &Service) {
+    let shared = service.handle();
+    let handler: apps::Handler = Arc::new(move |event| on_system_event(&shared, event));
+    if apps::observe(handler) {
+        // Before the next notification can arrive: both run on the main thread.
+        service.update(|s| {
+            s.rules_supported = true;
+            s.frontmost_app = apps::frontmost();
+        });
+    }
+}
+
+/// Applies what an observer reported. The frontmost app is never logged.
+fn on_system_event(shared: &Shared, event: SystemEvent) {
+    let event = match event {
+        SystemEvent::Frontmost(app) => {
+            shared.update(|s| s.frontmost_app = app);
+            return;
+        }
+        SystemEvent::ScreenLocked(true) => Event::ScreenLocked,
+        SystemEvent::ScreenLocked(false) => Event::ScreenUnlocked,
+        SystemEvent::SessionActive(false) => Event::SessionInactive,
+        SystemEvent::SessionActive(true) => Event::SessionActive,
+    };
+    log::debug!("auto-mute: {event:?}");
+    shared.update(|s| s.auto_mute_reasons.apply(event));
+}
+
+/// Once the first permission check is done (it may find Input Monitoring missing), opens the
+/// onboarding window if it is offered or a relaunch asked for it. On its own short-lived thread.
+fn open_onboarding_when_due<R: Runtime>(app: &AppHandle<R>, shared: Arc<Shared>, reopen: bool) {
+    let app = app.clone();
+    let spawned = std::thread::Builder::new().name("taktak-onboarding".into()).spawn(move || {
+        if !shared.wait_permission_checked(ONBOARDING_WAIT) {
+            log::debug!("the first permission check is late; deciding on the onboarding anyway");
+        }
+        if windows::open_at_startup(shared.snapshot().onboarding.offer, reopen)
+            && let Err(e) = windows::show_onboarding(&app)
+        {
+            log::warn!("cannot open the welcome guide: {e}");
+        }
+    });
+    if let Err(e) = spawned {
+        log::warn!("cannot schedule the welcome guide: {e}");
+    }
 }
 
 /// The service's [`Notify`]: hands each new state to the `taktak-events` thread, which emits

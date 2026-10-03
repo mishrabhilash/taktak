@@ -1,7 +1,7 @@
 //! `synth-packs loudness`: measures any pack's typing loudness exactly the way the generator
-//! matches its own packs ([`crate::pack::match_loudness`]), so that recorded packs can be set
-//! to the same level with the `volume` field of their pack.json and switching packs does not
-//! jump in volume.
+//! matches its own packs ([`crate::pack::match_loudness`]), so that the bundled packs can be
+//! set to TakTak's reference typing level ([`REFERENCE_LK`]) with the `volume` field of their
+//! pack.json and switching packs does not jump in volume.
 //!
 //! The pack is loaded with TakTak's own loader at 48 kHz, so the measured samples are the ones
 //! the engine plays (decoded, downmixed, leading silence trimmed, resampled). Typing loudness
@@ -27,8 +27,10 @@ use taktak_core::input::KeyAction;
 use taktak_core::key::{Key, KeyGroup};
 use taktak_core::pack::{self, PackOrigin};
 
-/// Typing loudness of the synthesized packs, which `synth-packs` matches to each other: the
-/// level every bundled pack is matched to.
+/// TakTak's reference typing level: the effective typing loudness every bundled pack is
+/// matched to (with its `volume`), so switching packs does not jump in volume. A fixed
+/// constant; it was first set by the experimental synthesized packs, which are no longer
+/// bundled.
 pub const REFERENCE_LK: f64 = -25.8;
 /// How far a bundled pack's effective typing loudness may stray from the reference.
 pub const TOLERANCE_DB: f64 = 0.5;
@@ -328,7 +330,7 @@ mod tests {
     }
 
     /// Switching between the packs TakTak ships must not jump in volume: every bundled pack
-    /// is matched to the synthesized packs, or as close as headroom allows.
+    /// in `packs/` is matched to [`REFERENCE_LK`], or as close as headroom allows.
     #[test]
     fn bundled_packs_are_loudness_matched() {
         let packs = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs");

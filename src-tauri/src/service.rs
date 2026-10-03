@@ -1,13 +1,16 @@
 //! The app's state and the control thread that drives `taktak-core`.
 //!
 //! - [`Shared`] holds the [`AppState`] behind a mutex that is only ever held for a moment
-//!   (never across I/O, decoding or device work). Commands, the tray menu and the hotkey change
-//!   it with [`Shared::update`], which recomputes `playing` and the input gate, queues a
-//!   settings save, wakes the control thread and broadcasts the new state.
+//!   (never across I/O, decoding or device work). Commands, the tray menu, the hotkey and the
+//!   macOS observers (frontmost app, screen lock, session) change it with [`Shared::update`],
+//!   which recomputes the derived fields ([`derive`]: `autoMute`, `ruleBlocked`, `playing`,
+//!   `onboarding.offer`) and the input gate, queues a settings save, wakes the control thread
+//!   and broadcasts the new state.
 //! - The control thread (`taktak-control`) owns the [`Engine`] (`Send`, not `Sync`), the key
 //!   listener, the pack registry and its watcher.
 //! - The output stream and the key listener run only while a key press can make a sound
-//!   (sounds on, not muted, Input Monitoring granted: [`keys_can_sound`]) or a preview plays.
+//!   (sounds on, not muted, not auto-muted, not rule-blocked for [`rules::CLOSE_AFTER`] or
+//!   longer, Input Monitoring granted: [`keys_can_sound`]) or a preview plays.
 //!   An open stream keeps the audio device awake, which costs `coreaudiod` 5–9 % of a core even
 //!   in silence. While they are closed, the playing pack stays decoded at the default device's
 //!   rate, so opening again takes only the ~0.1 s the device needs.
@@ -17,21 +20,26 @@
 //!   every 2 s for an output device while one is needed and none opens, and every 5 s for the
 //!   default device while the output is closed.
 //! - Packs are decoded on `taktak-loader` ([`Loader`]); the control thread swaps the result in.
+//! - It also watches the default output device ([`DeviceWatch`]) for the `outputChanged`
+//!   auto-mute: every device it opens or looks at while the output is closed.
 //!
 //! Nothing here sees which keys are pressed: the hook forwards events straight to the audio
 //! callback, and latency samples are timings only.
 
+use crate::automute::{self, DeviceWatch};
 use crate::catalog::{self, ActiveView, Reaction};
 use crate::input::{self, Permission as PermissionPoll};
 use crate::loader::{BankJob, BankLoaded, Done, Loader, PreviewJob, PreviewLoaded};
+use crate::rules::{self, RuleBlock};
 use crate::settings::{self, PersistHandle, Persister};
 use crate::state::{AppState, AudioState, AudioStatus, LatencyReport, Permission, Settings};
+use crate::windows;
 use std::collections::VecDeque;
 use std::io;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use taktak_core::audio::{
@@ -120,7 +128,8 @@ impl PreviewWait {
 }
 
 /// Whether a key press can make a sound, so the output stream and the key listener should run:
-/// the gate is open (sounds on, not muted), the platform has a key listener, Input Monitoring is
+/// sounds may play (on, not muted, not auto-muted, and not blocked by a per-app rule for
+/// [`rules::CLOSE_AFTER`] or longer), the platform has a key listener, Input Monitoring is
 /// granted, and the listener is not waiting to be retried after it failed to start.
 pub fn keys_can_sound(
     gate_open: bool,
@@ -141,6 +150,17 @@ pub fn permission_state(hook_supported: bool, granted: bool, hook_failed: bool) 
     } else {
         Permission::Denied
     }
+}
+
+/// `onboarding.relaunchSuggested`: macOS reports Input Monitoring as granted, but the key
+/// listener still could not start (a relaunch usually fixes that).
+pub fn relaunch_suggested(hook_supported: bool, granted: bool, hook_failed: bool) -> bool {
+    hook_supported && granted && hook_failed
+}
+
+/// `onboarding.permissionRequired`: macOS with the key listener on.
+pub fn permission_required(listen: bool) -> bool {
+    cfg!(target_os = "macos") && listen
 }
 
 /// What a failed key listener start means for later attempts.
@@ -198,6 +218,14 @@ struct Inner {
 pub struct Shared {
     inner: Mutex<Inner>,
     gate: Arc<AtomicBool>,
+    /// The gate without the per-app rule: sounds on, not muted, not auto-muted. With
+    /// `rule_blocked`, what the control thread needs to open or close the output.
+    sounds: AtomicBool,
+    /// `AppState::rule_blocked`.
+    rule_blocked: AtomicBool,
+    /// Set once the control thread has checked Input Monitoring for the first time (or knows it
+    /// never will): the onboarding decision at startup waits for it.
+    permission_checked: (Mutex<bool>, Condvar),
     latency: Mutex<VecDeque<LatencySample>>,
     /// Whether the output stream is open (diagnostics and the self-test).
     output_open: AtomicBool,
@@ -210,12 +238,45 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// `playing` as the contract defines it.
+/// The gate the key hook checks, for `state` (its derived fields up to date).
+pub fn gate_of(state: &AppState) -> bool {
+    rules::gate_open(
+        state.settings.enabled,
+        state.muted,
+        state.auto_mute.is_some(),
+        state.rule_blocked,
+    )
+}
+
+/// `playing` as the contract defines it: the gate is open, permission granted, audio ok.
 pub fn is_playing(state: &AppState) -> bool {
-    state.settings.enabled
-        && !state.muted
-        && state.permission == Permission::Granted
-        && state.audio.state == AudioState::Ok
+    gate_of(state) && state.permission == Permission::Granted && state.audio.state == AudioState::Ok
+}
+
+/// Recomputes the fields that follow from the others: `autoMute` from its reasons,
+/// `frontmostApp` (none where rules are unsupported), `ruleBlocked`, `playing` and
+/// `onboarding.offer`.
+pub fn derive(state: &mut AppState) {
+    state.auto_mute = state.auto_mute_reasons.reason();
+    if !state.rules_supported {
+        state.frontmost_app = None;
+    }
+    state.rule_blocked = state.rules_supported
+        && rules::blocks(
+            &state.settings.app_rule,
+            state.frontmost_app.as_ref().map(|a| a.id.as_str()),
+        );
+    state.playing = is_playing(state);
+    state.onboarding.offer = windows::offer_onboarding(
+        state.settings.onboarding_done,
+        state.onboarding.permission_required,
+        state.permission,
+    );
+}
+
+/// The gate without its per-app rule term (see [`Shared`]).
+fn sounds_of(state: &AppState) -> bool {
+    rules::gate_open(state.settings.enabled, state.muted, state.auto_mute.is_some(), false)
 }
 
 /// The contract's latency report for `samples`, once there are enough of them.
@@ -236,11 +297,22 @@ pub fn latency_report(samples: &[LatencySample]) -> Option<LatencyReport> {
 }
 
 impl Shared {
-    pub fn new(state: AppState, control: Sender<Msg>, persist: Persist, notify: Notify) -> Shared {
-        let gate = input::gate_open(state.settings.enabled, state.muted);
+    pub fn new(
+        mut state: AppState,
+        control: Sender<Msg>,
+        persist: Persist,
+        notify: Notify,
+    ) -> Shared {
+        derive(&mut state);
+        let gate = gate_of(&state);
+        let sounds = sounds_of(&state);
+        let rule_blocked = state.rule_blocked;
         Shared {
             inner: Mutex::new(Inner { state, revision: 0 }),
             gate: Arc::new(AtomicBool::new(gate)),
+            sounds: AtomicBool::new(sounds),
+            rule_blocked: AtomicBool::new(rule_blocked),
+            permission_checked: (Mutex::new(false), Condvar::new()),
             latency: Mutex::new(VecDeque::new()),
             output_open: AtomicBool::new(false),
             control,
@@ -257,9 +329,36 @@ impl Shared {
         lock(&self.inner).state.settings.clone()
     }
 
-    /// The flag the key hook checks: `enabled && !muted`.
+    /// The flag the key hook checks: `enabled && !muted && autoMute === null && !ruleBlocked`.
     pub fn gate(&self) -> &Arc<AtomicBool> {
         &self.gate
+    }
+
+    /// The gate without its per-app rule term: sounds on, not muted, not auto-muted.
+    pub fn sounds_on(&self) -> bool {
+        self.sounds.load(Ordering::Relaxed)
+    }
+
+    /// Whether a per-app rule silences the app in front now.
+    pub fn rule_blocked(&self) -> bool {
+        self.rule_blocked.load(Ordering::Relaxed)
+    }
+
+    /// Records that the first Input Monitoring check is done (or will never happen).
+    pub fn mark_permission_checked(&self) {
+        let (done, changed) = &self.permission_checked;
+        *lock(done) = true;
+        changed.notify_all();
+    }
+
+    /// Waits up to `timeout` for the first Input Monitoring check; `false` on timeout.
+    pub fn wait_permission_checked(&self, timeout: Duration) -> bool {
+        let (done, changed) = &self.permission_checked;
+        let guard = lock(done);
+        let (guard, _) = changed
+            .wait_timeout_while(guard, timeout, |done| !*done)
+            .unwrap_or_else(PoisonError::into_inner);
+        *guard
     }
 
     /// Applies `change` and returns the new state. See [`Shared::try_update`].
@@ -271,10 +370,10 @@ impl Shared {
         result.unwrap_or_else(|_| self.snapshot())
     }
 
-    /// Applies `change`, or nothing if it fails. On success it recomputes `playing` and the
-    /// gate; if anything changed it bumps the revision and notifies. If the settings changed
-    /// it queues a save, and if they or the gate changed it tells the control thread (which
-    /// opens or closes the output with the gate).
+    /// Applies `change`, or nothing if it fails. On success it recomputes the derived fields
+    /// ([`derive`]) and the gate; if anything changed it bumps the revision and notifies. If the
+    /// settings changed it queues a save, and if they, the gate or either of its parts (sounds,
+    /// rule block) changed it tells the control thread (which opens or closes the output).
     pub fn try_update<E>(
         &self,
         change: impl FnOnce(&mut AppState) -> Result<(), E>,
@@ -307,9 +406,13 @@ impl Shared {
             return Err(e);
         }
         let state = &mut inner.state;
-        state.playing = is_playing(state);
-        let gate = input::gate_open(state.settings.enabled, state.muted);
+        derive(state);
+        let gate = gate_of(state);
+        let sounds = sounds_of(state);
+        let blocked = state.rule_blocked;
         let gate_changed = self.gate.swap(gate, Ordering::Relaxed) != gate;
+        let sounds_changed = self.sounds.swap(sounds, Ordering::Relaxed) != sounds;
+        let blocked_changed = self.rule_blocked.swap(blocked, Ordering::Relaxed) != blocked;
         if inner.state == before && !always_notify {
             return Ok(before);
         }
@@ -317,7 +420,7 @@ impl Shared {
         if settings_changed {
             (self.persist)(inner.state.settings.clone());
         }
-        if settings_changed || gate_changed {
+        if settings_changed || gate_changed || sounds_changed || blocked_changed {
             let _ = self.control.send(Msg::Sync);
         }
         inner.revision += 1;
@@ -367,8 +470,7 @@ pub struct Config {
     pub settings_path: PathBuf,
     pub bundled_dir: Option<PathBuf>,
     pub user_dir: Option<PathBuf>,
-    /// Listen to the keyboard (checking and, once per launch, requesting permission). Off for
-    /// the self-test, which must never prompt.
+    /// Listen to the keyboard (checking permission, never prompting). Off for the self-test.
     pub listen: bool,
 }
 
@@ -399,6 +501,7 @@ impl Service {
         let (tx, rx) = mpsc::channel();
         let mut initial = AppState::initial(config.version, config.settings);
         initial.user_packs_dir = config.user_dir.as_ref().map(|d| d.display().to_string());
+        initial.onboarding.permission_required = permission_required(config.listen);
         let shared =
             Arc::new(Shared::new(initial, tx.clone(), Box::new(move |s| persist.save(s)), notify));
 
@@ -412,6 +515,11 @@ impl Service {
         let thread =
             thread::Builder::new().name("taktak-control".into()).spawn(move || control.run())?;
         Ok(Service { shared, persister, control: Mutex::new(Some(thread)) })
+    }
+
+    /// The shared state, for observers that outlive no particular command (macOS notifications).
+    pub fn handle(&self) -> Arc<Shared> {
+        self.shared.clone()
     }
 
     /// Selects pack `id` (persisted) and loads it off the main thread; another
@@ -628,6 +736,11 @@ struct Control {
     hook_supported: bool,
     /// Set while a key listener that failed to start waits to be tried again (not before then).
     hook_retry_at: Option<Instant>,
+    /// How long a per-app rule has silenced the app in front: the output closes once it is
+    /// [`rules::CLOSE_AFTER`].
+    rule_block: RuleBlock,
+    /// The default output device as last seen, for the `outputChanged` auto-mute.
+    devices: DeviceWatch,
     active: Active,
     previews: PreviewCache,
     /// The preview the user asked for last, while it is being decoded.
@@ -662,6 +775,8 @@ impl Control {
             permission: PermissionPoll::new(),
             hook_supported: true,
             hook_retry_at: None,
+            rule_block: RuleBlock::default(),
+            devices: DeviceWatch::default(),
             active: Active::default(),
             previews: PreviewCache::default(),
             pending_preview: None,
@@ -671,11 +786,16 @@ impl Control {
 
     fn run(mut self) {
         self.scan();
+        self.migrate_retired_selection();
         self.watch();
         if self.hook_supported {
             self.poll_permission(Instant::now());
         }
+        self.rule_block.observe(self.shared.rule_blocked(), Instant::now());
         self.reconcile(Instant::now());
+        // After the first listener start too: a listener macOS refuses although the permission
+        // looks granted also needs the onboarding (its troubleshooting).
+        self.shared.mark_permission_checked();
         loop {
             let msg = match self.next_wake(Instant::now()) {
                 Some(at) => self.rx.recv_timeout(at.saturating_duration_since(Instant::now())),
@@ -687,6 +807,7 @@ impl Control {
                 Err(RecvTimeoutError::Timeout) => {}
             }
             let now = Instant::now();
+            self.rule_block.observe(self.shared.rule_blocked(), now);
             self.tick(now);
             self.reconcile(now);
         }
@@ -705,6 +826,8 @@ impl Control {
                 self.preview_until,
                 self.hook_retry_at,
                 self.hook_supported.then(|| self.permission.next_check()),
+                // Once, to close the output when a rule block has lasted long enough.
+                self.audio.as_ref().and(self.rule_block.settles_at()),
             ],
         )
     }
@@ -746,10 +869,11 @@ impl Control {
 
     // --- what runs ----------------------------------------------------------------------------
 
-    /// Whether a key press can make a sound now ([`keys_can_sound`]).
+    /// Whether a key press can make a sound now ([`keys_can_sound`]). A rule block keeps the
+    /// output and the listener for [`rules::CLOSE_AFTER`] (the gate silences keys at once).
     fn keys_wanted(&self, now: Instant) -> bool {
         keys_can_sound(
-            self.shared.gate().load(Ordering::Relaxed),
+            self.shared.sounds_on() && !self.rule_block.settled(now),
             self.hook_supported,
             self.permission.granted(),
             self.hook_retry_at.is_some_and(|at| now < at),
@@ -812,6 +936,17 @@ impl Control {
             "found {found} sound pack(s) in {:.1} ms",
             started.elapsed().as_secs_f64() * 1e3
         );
+    }
+
+    /// Moves a saved selection of a pack TakTak no longer bundles to the default pack
+    /// ([`catalog::migrate_retired`]), persisted, before the first load: no "not installed"
+    /// banner for users whose old default went away.
+    fn migrate_retired_selection(&mut self) {
+        let selected = self.shared.settings().pack_id;
+        if let Some(id) = catalog::migrate_retired(&selected, &self.packs()) {
+            log::info!("pack \"{selected}\" is no longer bundled; selecting \"{id}\" instead");
+            self.shared.update(|s| s.settings.pack_id = id.to_owned());
+        }
     }
 
     fn watch(&mut self) {
@@ -1076,8 +1211,18 @@ impl Control {
         self.output_missing = false;
         self.next_poll = now + POLL;
         self.shared.update(|s| s.audio = device_status(&info));
+        self.saw_device(&info.name);
         if !reused && self.active.pending_rate != Some(info.sample_rate) {
             self.request_bank();
+        }
+    }
+
+    /// Records the default output device (opened, or looked at while the output is closed):
+    /// another device than the last one sets the `outputChanged` auto-mute if it is armed.
+    fn saw_device(&mut self, name: &str) {
+        if self.devices.see(Some(name)) {
+            log::info!("the default output device changed");
+            self.shared.update(automute::output_changed);
         }
     }
 
@@ -1119,6 +1264,7 @@ impl Control {
         let status = match core_audio::default_output(Some(BUFFER_FRAMES)) {
             Ok(info) => {
                 self.output_missing = false;
+                self.saw_device(&info.name);
                 if self.rate != Some(info.sample_rate) {
                     // The device the next open would use runs at another rate: decode for it now
                     // (a broken pack's last working version cannot be decoded again).
@@ -1190,15 +1336,17 @@ impl Control {
 
     // --- input ------------------------------------------------------------------------------
 
+    /// Checks Input Monitoring (never prompts: `open_permission_settings` asks macOS to list
+    /// TakTak). The first check is logged either way, later changes when they happen.
     fn poll_permission(&mut self, now: Instant) {
+        let first = self.permission.first();
         let was = self.permission.granted();
-        let granted = self.permission.check(
-            now,
-            taktak_core::input::has_permission,
-            taktak_core::input::request_permission,
-        );
-        if granted != was {
-            log::info!("Input Monitoring {}", if granted { "granted" } else { "not granted" });
+        let granted = self.permission.check(now, taktak_core::input::has_permission);
+        let said = if granted { "granted" } else { "not granted" };
+        if first && cfg!(target_os = "macos") {
+            log::info!("Input Monitoring: {said}");
+        } else if !first && granted != was {
+            log::info!("Input Monitoring {said}");
         }
         self.publish_permission();
     }
@@ -1252,19 +1400,24 @@ impl Control {
     }
 
     fn publish_permission(&self) {
-        let permission = permission_state(
-            self.hook_supported,
-            self.permission.granted(),
-            self.hook_retry_at.is_some(),
-        );
-        self.shared.update(|s| s.permission = permission);
+        let (supported, granted, failed) =
+            (self.hook_supported, self.permission.granted(), self.hook_retry_at.is_some());
+        let permission = permission_state(supported, granted, failed);
+        let relaunch = relaunch_suggested(supported, granted, failed);
+        self.shared.update(|s| {
+            s.permission = permission;
+            s.onboarding.relaunch_suggested = relaunch;
+        });
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::state::{PackOrigin, PackSummary};
+    use crate::automute::Event;
+    use crate::state::{
+        AppRef, AppRule, AppRuleEntry, AppRuleMode, AutoMute, PackOrigin, PackSummary,
+    };
 
     struct Rig {
         shared: Shared,
@@ -1280,8 +1433,8 @@ mod tests {
         let (s, n) = (saved.clone(), notified.clone());
         let mut state = AppState::initial("0.1.0", Settings::default());
         state.packs.push(PackSummary {
-            id: "deep-thock".into(),
-            name: "Deep Thock".into(),
+            id: "buckling-spring".into(),
+            name: "Buckling Spring".into(),
             author: "A".into(),
             license: "CC0-1.0".into(),
             description: None,
@@ -1322,8 +1475,147 @@ mod tests {
         assert!(!r.shared.update(|s| s.permission = Permission::Denied).playing);
     }
 
+    fn slack() -> AppRef {
+        AppRef { id: "com.tinyspeck.slackmacgap".into(), name: "Slack".into() }
+    }
+
+    fn never_slack() -> AppRule {
+        AppRule {
+            mode: AppRuleMode::Never,
+            apps: vec![AppRuleEntry { id: slack().id, name: slack().name }],
+        }
+    }
+
     #[test]
-    fn gate_tracks_enabled_and_muted_only() {
+    fn rules_block_only_where_supported_and_close_the_gate() {
+        let r = rig();
+        ready(&r.shared);
+        let gate = r.shared.gate().clone();
+        // Not supported (yet): the frontmost app is dropped and nothing is blocked.
+        let state = r.shared.update(|s| {
+            s.settings.app_rule = never_slack();
+            s.frontmost_app = Some(slack());
+        });
+        assert_eq!(state.frontmost_app, None);
+        assert!(!state.rule_blocked && state.playing);
+        // Supported: Slack in front is silent; the hook's gate closes, permission or not.
+        let state = r.shared.update(|s| {
+            s.rules_supported = true;
+            s.frontmost_app = Some(slack());
+        });
+        assert!(state.rule_blocked && !state.playing);
+        assert!(!gate.load(Ordering::Relaxed) && r.shared.rule_blocked());
+        assert!(r.shared.sounds_on(), "the rule is not part of the sounds term");
+        assert!(!state.muted && state.auto_mute.is_none(), "rules never touch the mute");
+        // Another app in front: sounds again.
+        let state = r.shared.update(|s| {
+            s.frontmost_app = Some(AppRef { id: "com.apple.Safari".into(), name: "Safari".into() })
+        });
+        assert!(!state.rule_blocked && state.playing && gate.load(Ordering::Relaxed));
+        // "only" with nobody known in front: silent.
+        let state = r.shared.update(|s| {
+            s.settings.app_rule.mode = AppRuleMode::Only;
+            s.frontmost_app = None;
+        });
+        assert!(state.rule_blocked && !gate.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn auto_mute_closes_the_gate_without_touching_the_mute() {
+        let r = rig();
+        ready(&r.shared);
+        let gate = r.shared.gate().clone();
+        let state = r.shared.update(|s| s.auto_mute_reasons.apply(Event::ScreenLocked));
+        assert_eq!(state.auto_mute, Some(AutoMute::ScreenLocked));
+        assert!(!state.playing && !state.muted && state.settings.enabled);
+        assert!(!gate.load(Ordering::Relaxed) && !r.shared.sounds_on());
+        r.shared.update(|s| s.settings.mute_on_output_change = true);
+        let state = r.shared.update(automute::output_changed);
+        assert_eq!(state.auto_mute, Some(AutoMute::ScreenLocked), "the stronger reason shows");
+        let state = r.shared.update(|s| s.auto_mute_reasons.apply(Event::ScreenUnlocked));
+        assert_eq!(state.auto_mute, Some(AutoMute::OutputChanged));
+        assert!(automute::effective_mute(&state) && !gate.load(Ordering::Relaxed));
+        let state = r.shared.update(|s| automute::set_muted(s, false));
+        assert_eq!(state.auto_mute, None);
+        assert!(state.playing && gate.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn rule_blocks_and_auto_mutes_wake_the_control_thread() {
+        let r = rig();
+        r.shared.update(|s| {
+            s.rules_supported = true;
+            s.settings.app_rule = never_slack();
+        });
+        while r.control.try_recv().is_ok() {}
+        r.shared.update(|s| s.frontmost_app = Some(slack()));
+        assert!(matches!(r.control.try_recv(), Ok(Msg::Sync)), "the block started");
+        r.shared.update(|s| s.frontmost_app = None);
+        assert!(matches!(r.control.try_recv(), Ok(Msg::Sync)), "the block ended");
+        // Muted: the gate stays closed, but the block's start still matters for its 5 s.
+        r.shared.update(|s| s.muted = true);
+        assert!(matches!(r.control.try_recv(), Ok(Msg::Sync)));
+        r.shared.update(|s| s.frontmost_app = Some(slack()));
+        assert!(matches!(r.control.try_recv(), Ok(Msg::Sync)));
+        // A frontmost change that blocks nothing new: notified only.
+        r.shared.update(|s| s.muted = false);
+        while r.control.try_recv().is_ok() {}
+        r.shared.update(|s| {
+            s.frontmost_app = Some(AppRef { id: "a.b".into(), name: "A".into() });
+        });
+        assert!(matches!(r.control.try_recv(), Ok(Msg::Sync)), "unblocked");
+        r.shared.update(|s| {
+            s.frontmost_app = Some(AppRef { id: "c.d".into(), name: "C".into() });
+        });
+        assert!(r.control.try_recv().is_err(), "still unblocked");
+        r.shared.update(|s| s.auto_mute_reasons.apply(Event::SessionInactive));
+        assert!(matches!(r.control.try_recv(), Ok(Msg::Sync)), "auto-muted");
+    }
+
+    #[test]
+    fn the_onboarding_offer_is_live() {
+        let r = rig();
+        assert!(r.shared.snapshot().onboarding.offer, "not done yet");
+        let state = r.shared.update(|s| {
+            s.settings.onboarding_done = true;
+            s.onboarding.permission_required = true;
+        });
+        assert!(!state.onboarding.offer, "permission unknown so far");
+        assert!(r.shared.update(|s| s.permission = Permission::Denied).onboarding.offer);
+        assert!(!r.shared.update(|s| s.permission = Permission::Granted).onboarding.offer);
+        let state = r.shared.update(|s| {
+            s.onboarding.permission_required = false;
+            s.permission = Permission::Denied;
+        });
+        assert!(!state.onboarding.offer, "no permission step on this platform");
+        assert!(!permission_required(false));
+        assert_eq!(permission_required(true), cfg!(target_os = "macos"));
+    }
+
+    #[test]
+    fn relaunch_is_suggested_when_the_hook_fails_despite_permission() {
+        assert!(relaunch_suggested(true, true, true));
+        assert!(!relaunch_suggested(true, false, true), "not granted: grant it first");
+        assert!(!relaunch_suggested(true, true, false), "listening");
+        assert!(!relaunch_suggested(false, true, true), "no listener on this platform");
+    }
+
+    #[test]
+    fn the_first_permission_check_can_be_waited_for() {
+        let shared = Arc::new(rig().shared);
+        assert!(!shared.wait_permission_checked(Duration::from_millis(10)));
+        let waiter = {
+            let shared = shared.clone();
+            thread::spawn(move || shared.wait_permission_checked(Duration::from_secs(10)))
+        };
+        thread::sleep(Duration::from_millis(20));
+        shared.mark_permission_checked();
+        assert!(waiter.join().unwrap());
+        assert!(shared.wait_permission_checked(Duration::ZERO));
+    }
+
+    #[test]
+    fn gate_tracks_enabled_and_muted() {
         let r = rig();
         let gate = r.shared.gate().clone();
         // Open before permission or audio: those decide whether a hook or stream exists.
@@ -1493,7 +1785,7 @@ mod tests {
             Err("nope".into())
         });
         assert_eq!(result.unwrap_err(), "nope");
-        assert_eq!(r.shared.settings().pack_id, "deep-thock");
+        assert_eq!(r.shared.settings().pack_id, "buckling-spring");
         assert!(r.notified.lock().unwrap().is_empty());
         assert!(r.saved.lock().unwrap().is_empty());
     }

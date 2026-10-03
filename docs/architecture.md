@@ -4,9 +4,9 @@
 
 | Path | What |
 |---|---|
-| `src-tauri/core` (`taktak-core`) | Everything latency-sensitive, no UI deps: input hooks, key map, audio engine, packs, rules, latency stats. Unit-testable on any OS. |
-| `src-tauri` (Milestone 3) | Tauri 2 app shell: tray, settings window, commands that drive `taktak-core`. |
-| `tools/synth-packs` | CLI that generates the procedurally synthesized bundled packs and measures any pack's typing loudness (`loudness`). |
+| `src-tauri/core` (`taktak-core`) | Everything latency-sensitive, no UI deps: input hooks, key map, audio engine, packs, latency stats. Unit-testable on any OS. |
+| `src-tauri` (Milestones 3–4) | Tauri 2 app shell: tray, settings and onboarding windows, commands that drive `taktak-core`, per-app rules and auto-mute (Milestone 4: `rules.rs`, `automute.rs`, `apps.rs`). |
+| `tools/synth-packs` | CLI that measures any pack's typing loudness (`loudness`), which keeps the bundled packs level-matched, and generates experimental synthesized packs (not bundled; written to `target/synth-packs`). |
 | `tools/pack-maker` | CLI that records (microphone + key listener) or slices (an existing WAV) keyboard audio into a sound pack. |
 | `tools/mechvibes-import` (Milestone 5) | CLI that reuses `taktak-core`'s pack writer. |
 
@@ -25,15 +25,20 @@
                                                                  │                   │  latency samples
                             ┌────────────────────────────────────┴───────────────────▼────┐
                             │ control (app threads, not main/UI): pack registry + loader, │
-                            │ settings, rules, frontmost-app watcher, stats               │
-                            └─────────────────────────────────────────────────────────────┘
+                            │ settings, output-device watch, stats                        │
+                            └────────────────────────────▲────────────────────────────────┘
+                                                         │ Shared::update → derive() → gate
+ ┌───────────────────────────────────────────────────────┴─────────────────────────────────┐
+ │ main thread (Tauri/AppKit): commands, windows, tray; NSWorkspace observers (frontmost   │
+ │ app, session) and CF distributed observers (screen lock), event-driven, never polled    │
+ └─────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 - **Input thread** (`taktak-input`): owns the OS hook (macOS: listen-only `CGEventTap` on a
   dedicated CFRunLoop). Per event it maps the native code to a `Key`, drops auto-repeat via
-  `PressState`, checks a single `AtomicBool` "sounds allowed right now" (maintained by the
-  rules engine off this path) and pushes a `Trigger` (key, down/up, event and receive
-  timestamps) into a lock-free ring. It does not choose or humanize sounds. No allocation, no
+  `PressState`, checks a single `AtomicBool` "sounds allowed right now" (maintained off this
+  path, see "The gate, per-app rules and auto-mute" below) and pushes a `Trigger` (key,
+  down/up, event and receive timestamps) into a lock-free ring. It does not choose or humanize sounds. No allocation, no
   locks, no logging: when macOS disables the tap (timeout or user input), the callback
   re-enables it, clears the held keys and bumps a counter that the control side reads with
   `Listener::take_reenabled` and logs.
@@ -88,14 +93,54 @@
   events) and loads packs. A load
   (`pack::load`) decodes every referenced file once to mono f32 at the device rate, then sends
   the finished `SoundBank` with `Engine::replace_bank` and, for "click to hear", the decoded
-  preview clip with `Engine::preview`. It also evaluates per-app rules and lock/device-change
-  state and flips the atomic gate. In the app (`src-tauri`) this is the `taktak-control`
-  thread (engine, listener, registry and watcher; asleep unless a message or a ≤ 4 Hz poll is
-  due). It opens the engine and the listener only while a key press can make a sound (sounds
-  on, not muted, permission granted) or a preview plays, and closes them otherwise. Decoding
-  runs on `taktak-loader`, settings writes on `taktak-settings` and
-  `state-changed` broadcasts on `taktak-events`. The Tauri main thread only runs commands,
-  window and tray work, and never waits on them (see `docs/ui-contract.md`, `docs/app.md`).
+  preview clip with `Engine::preview`. In the app (`src-tauri`) this is the `taktak-control`
+  thread (engine, listener, registry and watcher; asleep unless a message, a ≤ 4 Hz engine
+  poll while the output is open, the 0.2 Hz default-device look while it is closed, or the
+  one-shot rule-block wake-up is due). It opens the engine and the listener only while a key
+  press can make a sound (sounds on, not muted, not auto-muted, not rule-blocked for 5 s or
+  longer, permission granted) or a preview plays, and closes them otherwise. It also feeds
+  every output device it opens or looks at into `DeviceWatch` (`automute.rs`), which arms the
+  `outputChanged` auto-mute. Decoding runs on `taktak-loader`, settings writes on
+  `taktak-settings` and `state-changed` broadcasts on `taktak-events`; at startup a
+  short-lived `taktak-onboarding` thread waits (≤ 5 s) for the first permission check and then
+  opens the welcome window if it is due. The Tauri main thread only runs commands, window and
+  tray work and the macOS observers, and never waits on the other threads (see
+  `docs/ui-contract.md`, `docs/app.md`).
+
+## The gate, per-app rules and auto-mute (Milestone 4)
+
+- **One atomic on the hot path.** Every state change goes through `Shared::update`, which runs
+  `derive()` (`service.rs`): `autoMute` from the separate reasons (`AutoMuteReasons`:
+  screen locked, session inactive, output changed), `ruleBlocked` from `settings.appRule` and
+  `frontmostApp` (`rules::blocks`), `playing` and `onboarding.offer`. It then stores three
+  atomics: the hook's gate (`rules::gate_open`: enabled && !muted && no auto-mute &&
+  !ruleBlocked), `sounds` (the gate without the rule term) and `rule_blocked`. A change to any
+  of them wakes the control thread. The hook still does exactly one `AtomicBool` load.
+- **Frontmost app, event-driven.** `apps.rs` registers block observers on
+  `NSWorkspace.notificationCenter` for `didActivateApplication` and session
+  resign/become-active, on the main thread at startup, and reads `frontmostApplication` once.
+  Activations of TakTak itself are ignored, so its own windows follow the app the user came
+  from. The handler calls `Shared::update` directly from the main thread (a mutex and a few
+  atomics; no I/O). The frontmost app is never logged, persisted or kept as a history.
+- **Screen lock.** `com.apple.screenIsLocked` / `screenIsUnlocked` through the CoreFoundation
+  distributed notification center with `DeliverImmediately`, because AppKit holds distributed
+  notifications back from inactive apps and TakTak (an accessory app) is almost never active.
+  All observers are removed in `RunEvent::Exit`.
+- **Power.** Auto-mute closes the output at once. A rule block closes the gate at once but the
+  output only after it has lasted 5 s (`rules::RuleBlock`): the control thread schedules one
+  wake-up for that moment instead of polling, so ⌘Tab through a blocked app does not reopen the
+  device.
+- **Output-change auto-mute.** `DeviceWatch::see` reports a change only when the device name
+  differs from the last one seen (not on the first device after launch, and not when the same
+  device comes back after a fault). `automute::output_changed` then arms the reason only if
+  `muteOnOutputChange && enabled && !muted`. It clears on any unmute (`set_muted`, the hotkey,
+  the tray item), on `set_enabled(true)` and when the setting is turned off.
+- **Windows and Linux.** `apps.rs` is a stub there: `rulesSupported` stays false, `frontmostApp`
+  null and `ruleBlocked` false; the rule list is kept and editable. See
+  [`platform-notes.md`](platform-notes.md).
+- **Relaunch.** `relaunch.rs` starts the new instance (`open -n <bundle> --args --relaunch
+  [--onboarding]` on macOS) before the old one exits normally; the new one waits up to 5 s for
+  the old instance lock instead of handing over to it.
 
 ## A key press, end to end
 
@@ -133,8 +178,8 @@ control side, never on the audio or input thread):
    The preview clip is scaled by the pack's `volume`, so "click to hear" plays as loud as
    typing in the pack.
 
-Bundled packs are loudness-matched: each recorded pack's `volume` puts its typing loudness at
-the synthesized packs' level (−25.8 LK; typing loudness is the K-weighted energy of the first
+Bundled packs are loudness-matched: each pack's `volume` puts its typing loudness at TakTak's
+reference typing level (a fixed −25.8 LK; typing loudness is the K-weighted energy of the first
 100 ms of the sample each alphanumeric key plays on press by default, power-averaged over the
 keys), within 0.5 dB, unless that would break the −1 dBFS true-peak headroom rule.
 `cargo run -p synth-packs --release -- loudness packs/*` measures them; its test
@@ -145,10 +190,7 @@ median of 5 runs on an Apple M3 Max, 14 cores, warm file cache):
 
 | Pack | Files | Audio at 48 kHz | Memory (f32) | Source rate | Load time |
 |---|---:|---:|---:|---|---:|
-| `blue-click` | 149 | 17.0 s | 3.1 MB | 48 kHz | 6 ms |
 | `buckling-spring` | 168 | 31.1 s | 5.7 MB | 44.1 kHz | 25 ms |
-| `crisp-clack` | 149 | 16.2 s | 3.0 MB | 48 kHz | 6 ms |
-| `deep-thock` | 149 | 17.7 s | 3.2 MB | 48 kHz | 6 ms |
 | `key-press` | 25 | 5.1 s | 0.9 MB | 48 kHz | 2 ms |
 | `linear-red` | 25 | 3.0 s | 0.5 MB | 48 kHz | 1 ms |
 | `office-classic` | 63 | 7.0 s | 1.3 MB | 44.1 kHz | 12 ms |
@@ -171,6 +213,8 @@ new one is swapped in.
   (on macOS: no `CGEventKeyboardGetUnicodeString`, no TIS calls).
 - `Key`'s `Debug` prints `Key(<redacted>)`, so key identities cannot leak into logs by accident.
 - No networking code or networking crates.
+- Per-app rules (Milestone 4) see only the frontmost app's bundle id and name, keep only the
+  current value in `AppState`, and never log it. Only the user's rule list is persisted.
 
 ## Measured (Milestone 1, MacBook Pro speakers, 44.1 kHz)
 
@@ -198,9 +242,9 @@ hook thread being scheduled). The hook thread therefore runs at `QOS_CLASS_USER_
 
 | | Latency | Global input | Per-app rules |
 |---|---|---|---|
-| macOS | < 10 ms on built-in speakers. Bluetooth output adds 100–250 ms (no fix possible). | Needs Input Monitoring. Secure Input (password fields, Terminal "Secure Keyboard Entry", lock screen) hides keystrokes, so it stays silent there by design. Unsigned dev builds lose the permission on every rebuild (code identity changes). | `NSWorkspace` frontmost app bundle ID, no extra permission. Spotlight/Raycast/Alfred panels report the *previous* app as frontmost. |
+| macOS | < 10 ms on built-in speakers. Bluetooth output adds 100–250 ms (no fix possible). | Needs Input Monitoring. Secure Input (password fields, Terminal "Secure Keyboard Entry", lock screen) hides keystrokes, so it stays silent there by design. Unsigned dev builds lose the permission on every rebuild (code identity changes); `npm run app` with a "TakTak Development" certificate keeps it. | `NSWorkspace` frontmost app bundle ID, no extra permission. Spotlight/Raycast/Alfred panels report the *previous* app as frontmost. |
 | Windows | cpal uses WASAPI shared mode at the default period (~10 ms) + mixer, typically 15–30 ms total. Hitting < 10 ms needs `IAudioClient3` low-latency shared mode (driver-dependent) or exclusive mode (blocks other apps' audio). Planned as a custom backend. | `WH_KEYBOARD_LL`, no admin. Cannot see keys typed into elevated (admin) windows unless TakTak is elevated (UIPI). Hook must return in < ~300 ms or Windows silently removes it. | `GetForegroundWindow` → process image path. Works, though a few protected processes refuse the query. |
-| Linux X11 | PipeWire default quantum is 1024 frames (~21 ms). We request a small buffer; PipeWire may still clamp (`PIPEWIRE_LATENCY`). | XInput2 raw events: listen-only, no root. | `_NET_ACTIVE_WINDOW` → `WM_CLASS`. |
+| Linux X11 | PipeWire runs the graph at the smallest `node.latency` any client asks for (1024 frames, ~21 ms, only when nobody asks for less), so our small fixed buffer lowers the quantum for every app while the stream is open; plan to request 128/48000 there (see platform-notes.md). | XInput2 raw events: listen-only, no root. | `_NET_ACTIVE_WINDOW` → `WM_CLASS`. |
 | Linux Wayland | as above | No global key API by design. Only `/dev/input` via evdev, which needs the `input` group (equivalent to keylogger rights). Opt-in and documented. | No generic API. Compositor-specific only (Sway/Hyprland IPC, GNOME needs an extension). Rules are unavailable otherwise. |
 
 Always-on stream: keeping the output stream open is what makes ~5 ms possible. Cold-starting

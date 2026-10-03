@@ -4,6 +4,7 @@
 //! The plugin runs registration on the main thread and blocks the caller until it is done, so
 //! [`apply`] is only called from the main thread (app setup and synchronous commands).
 
+use crate::automute;
 use crate::service::Service;
 use std::str::FromStr;
 use std::sync::{Mutex, PoisonError};
@@ -140,13 +141,15 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>, accelerator: Option<&str>) -> Resul
     Ok(())
 }
 
-/// The plugin's handler: the mute hotkey was pressed (the only shortcut TakTak registers).
+/// The plugin's handler: the mute hotkey was pressed (the only shortcut TakTak registers). It
+/// toggles the mute switch the UI shows: an `outputChanged` auto-mute counts as muted, so the
+/// press unmutes it.
 pub fn on_event<R: Runtime>(app: &AppHandle<R>, _shortcut: &Shortcut, event: ShortcutEvent) {
     if event.state != ShortcutState::Pressed {
         return;
     }
     if let Some(service) = app.try_state::<Service>() {
-        let state = service.update(|s| s.muted = !s.muted);
+        let state = service.update(automute::toggle_mute);
         log::info!("mute hotkey: {}", if state.muted { "muted" } else { "unmuted" });
     }
 }

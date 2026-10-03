@@ -148,7 +148,7 @@ MAX_MS = {
 }
 
 # Playback level, written to pack.json as "volume"; it changes no audio file. It matches the
-# pack's typing loudness to the synthesized packs' -25.8 LK, so switching packs does not jump
+# pack's typing loudness to TakTak's reference typing level, -25.8 LK, so switching packs does not jump
 # in volume. Measured on the built pack with
 #     cargo run -p synth-packs --release -- loudness packs/ui-clicks
 # (tools/synth-packs/src/loudness.rs): -24.2 LK at volume 1.0, -25.5 LK at VOLUME. Recorded

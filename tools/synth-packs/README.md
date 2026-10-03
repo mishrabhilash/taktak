@@ -1,8 +1,15 @@
 # synth-packs
 
-Generates TakTak's three bundled [sound packs](../../docs/pack-format.md) by physically
-informed synthesis. No recordings are involved, so the packs are our own work. The generated
-packs are released under **CC0-1.0**, and the tool itself is MIT like the rest of TakTak.
+> **Experimental. These packs are not bundled with TakTak.** They were judged not to sound
+> good enough to ship, so they were removed from `packs/`. The generator stays as an
+> experiment: it writes its packs to a build-output folder (`target/synth-packs` by default),
+> never into `packs/`, and nothing in TakTak depends on them. The tool's other job,
+> [measuring any pack's typing loudness](#measuring-any-packs-loudness), is what keeps the
+> bundled (recorded) packs level-matched, and it does not need the synthesized packs.
+
+Generates three experimental [sound packs](../../docs/pack-format.md) by physically informed
+synthesis. No recordings are involved, so the packs are our own work. The generated packs are
+released under **CC0-1.0**, and the tool itself is MIT like the rest of TakTak.
 
 | Pack | Models | Character |
 |---|---|---|
@@ -15,10 +22,13 @@ packs are released under **CC0-1.0**, and the tool itself is MIT like the rest o
 From the repository root:
 
 ```
-cargo run -p synth-packs --release -- --out packs
+cargo run -p synth-packs --release                              # writes target/synth-packs/<id>/
+cargo run -p synth-packs --release -- --out /some/folder        # or anywhere else
 ```
 
-This writes `packs/<id>/` for each pack and takes a few seconds. An existing folder is replaced
+This writes `<out>/<id>/` for each pack and takes a few seconds. Do not point `--out` at
+`packs/`: everything there is bundled with the app. To try a pack in TakTak, copy its folder
+into the user packs folder (Settings shows where). An existing folder is replaced
 only if its `pack.json` says it came from synth-packs; anything else is left alone. Before
 writing, the generator removes the files it owns (`sounds/*.wav`, `pack.json`, `preview.wav`,
 `SOURCES.md`), so renamed samples leave nothing stale behind. Never edit these files by hand:
@@ -50,7 +60,8 @@ or toolchain if its `libm` rounds differently.
   position, row, finger, fixed offsets), so the runtime only needs to keep fast repeats of one
   key from sounding copied; by default the app applies a quarter of these ranges.
 - `SOURCES.md`: the provenance record that the [bundled-pack rules](../../docs/pack-format.md#bundled-packs)
-  require. It states that the pack is entirely synthesized by this tool (no recordings, no
+  require (kept so a generated pack would meet them if one were ever bundled again). It
+  states that the pack is entirely synthesized by this tool (no recordings, no
   third-party audio), the CC0-1.0 dedication, the generator version and seed scheme, how to
   regenerate, the processing applied (pack gain, tail trim, fade, 16-bit rounding), and a table
   of every other file with what it plays for, its synthesis class and board position, its size
@@ -109,11 +120,16 @@ K-weighted (BS.1770) energy of all the per-key alphanumeric presses (second take
 over 100 ms. The pack whose
 loudest press would clip first (Blue Click, the highest crest factor) peaks at −3 dBFS, and
 the other two sit lower at the same loudness. Tails are cut once they stay below −60 dBFS.
-That level, −25.8 LK, is the reference every other bundled pack is matched to (below). The
-`loudness` measure below, which counts only the take each key plays by default, reads the
-three packs within 0.2 dB of it.
+That level, −25.8 LK, is where TakTak's reference typing level (below) came from; the
+reference is now a fixed constant (`loudness::REFERENCE_LK`) that no longer depends on these
+packs. The `loudness` measure below, which counts only the take each key plays by default,
+reads the three packs within 0.2 dB of it.
 
 ## Measuring any pack's loudness
+
+TakTak's reference typing level is **−25.8 LK** (`loudness::REFERENCE_LK`): every bundled pack
+sets its pack.json `volume` so its typing loudness lands there (or as close as headroom
+allows), so switching packs does not jump in volume.
 
 ```
 cargo run -p synth-packs --release -- loudness packs/*            # or any pack folder / .zip
@@ -132,7 +148,7 @@ over the keys, so a sample several keys share counts once per key. Per pack it p
 |---|---|
 | `n` | distinct samples the alphanumeric keys play on press by default |
 | `LK raw` / `LK eff` | typing loudness as stored, and with the pack's `volume` |
-| `vs ref` | `LK eff` minus the target (default −25.8 LK) |
+| `vs ref` | `LK eff` minus the target (default −25.8 LK, the reference typing level) |
 | `status` | `ok` within 0.5 dB; `limited` quieter, but already at the largest clean volume; `OFF` fix it |
 | `rel-press dB` | the same measure on the alphanumeric keys' releases, relative to the presses |
 | `true peak eff` | loudest true peak (4x oversampled) of any sample a key can play (random variants included), times `volume` and the top of the volume variation |
@@ -142,7 +158,8 @@ over the keys, so a sample several keys share counts once per key. Per pack it p
 The recorded packs' build scripts (`tools/pack-sources/<id>/`) write the `volume` measured this
 way, and each pack's `SOURCES.md` records it. After changing a build, rebuild the pack, run
 `loudness` on it and update the script's `VOLUME`. The test
-`loudness::tests::bundled_packs_are_loudness_matched` fails when a bundled pack is `OFF`.
+`loudness::tests::bundled_packs_are_loudness_matched` measures every pack in `packs/` against
+the reference and fails when one is `OFF`.
 
 ## Checking the result without listening
 
@@ -170,7 +187,8 @@ Releases are quieter and brighter than presses in all three.
 `cargo test -p synth-packs` covers the DSP blocks (resonator peak and decay, filters, pulse,
 noise, damping law, determinism), SHA-256 against the NIST vectors, the rendered events
 (finite, immediate onset, zero end, no DC, the intended differences between packs), and the
-generated packs. For the packs it checks every alphanumeric key and every group, valid key and
+generated packs, which the tests write to temporary folders (no generator test touches
+`packs/`). For the packs it checks every alphanumeric key and every group, valid key and
 group names, that every file exists and is ≤ 2 s, that files end at zero, the size limit,
 loudness matching, that `SOURCES.md` lists every other file with its correct size and SHA-256,
 byte-identical regeneration (also into a different folder, and over a hand-edited
@@ -179,7 +197,5 @@ For `loudness` it checks that level and `volume` shift the measurement by the ri
 dB, that it agrees with the generator's own measure, that it weights each alphanumeric key's
 default sample once per key, the true-peak estimate (a quarter-rate
 sine at 45° reads 0 dBFS from samples at −3 dBFS), the headroom and status logic, and that
-every pack in `packs/` is matched to the reference or headroom-limited.
-
-The bundled-pack gate, `cargo test -p taktak-core --test bundled_packs`, then checks the
-regenerated `packs/` against docs/pack-format.md.
+every bundled pack in `packs/` (the recorded packs) is matched to the reference or
+headroom-limited.

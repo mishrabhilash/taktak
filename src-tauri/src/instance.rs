@@ -13,8 +13,12 @@
 //!   message, so nothing (no arguments, no working directory) is passed along.
 //!
 //! On Windows and Linux `tauri-plugin-single-instance` does this per user session.
+//!
+//! A TakTak started by `relaunch` claims with a wait (`relaunch::LOCK_WAIT`): the old instance
+//! still holds the lock while it quits, and handing over to it would leave nothing running.
 
-use std::fs::{self, File, OpenOptions, Permissions, TryLockError};
+use crate::relaunch;
+use std::fs::{self, File, OpenOptions, Permissions};
 use std::io;
 use std::os::unix::fs::{FileTypeExt, MetadataExt, PermissionsExt};
 use std::os::unix::net::{UnixListener, UnixStream};
@@ -47,17 +51,14 @@ pub fn default_dir() -> Option<PathBuf> {
     taktak_core::pack::registry::default_user_dir().and_then(|d| d.parent().map(Path::to_owned))
 }
 
-/// Becomes the instance for this user, or hands over to the one that is.
-pub fn claim(dir: &Path) -> io::Result<Claim> {
+/// Becomes the instance for this user, or hands over to the one that is. `wait`: how long an
+/// instance that holds the lock may take to exit first (zero: hand over at once).
+pub fn claim(dir: &Path, wait: Duration) -> io::Result<Claim> {
     fs::create_dir_all(dir)?;
     let lock = OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(LOCK))?;
-    match lock.try_lock() {
-        Ok(()) => {}
-        Err(TryLockError::WouldBlock) => {
-            notify(&dir.join(SOCKET));
-            return Ok(Claim::Second);
-        }
-        Err(TryLockError::Error(e)) => return Err(e),
+    if !relaunch::try_lock_for(&lock, wait)? {
+        notify(&dir.join(SOCKET));
+        return Ok(Claim::Second);
     }
     let path = dir.join(SOCKET);
     let socket = match bind(&path) {
@@ -138,7 +139,7 @@ mod tests {
     use std::sync::mpsc;
 
     fn first(dir: &Path) -> Instance {
-        match claim(dir).unwrap() {
+        match claim(dir, Duration::ZERO).unwrap() {
             Claim::First(instance) => instance,
             Claim::Second => panic!("another instance holds {}", dir.display()),
         }
@@ -150,7 +151,7 @@ mod tests {
         let instance = first(dir.path());
         let (tx, launches) = mpsc::channel();
         instance.listen(move || tx.send(()).unwrap()).unwrap();
-        assert!(matches!(claim(dir.path()).unwrap(), Claim::Second));
+        assert!(matches!(claim(dir.path(), Duration::ZERO).unwrap(), Claim::Second));
         launches.recv_timeout(Duration::from_secs(5)).expect("the instance heard the launch");
         // Only this user can reach the socket.
         let mode = fs::metadata(dir.path().join(SOCKET)).unwrap().permissions().mode();
@@ -169,8 +170,32 @@ mod tests {
         let instance = first(dir.path());
         let (tx, launches) = mpsc::channel();
         instance.listen(move || tx.send(()).unwrap()).unwrap();
-        assert!(matches!(claim(dir.path()).unwrap(), Claim::Second));
+        assert!(matches!(claim(dir.path(), Duration::ZERO).unwrap(), Claim::Second));
         launches.recv_timeout(Duration::from_secs(5)).unwrap();
+    }
+
+    #[test]
+    fn a_relaunched_instance_waits_instead_of_handing_over() {
+        let dir = tempfile::tempdir().unwrap();
+        let old = first(dir.path());
+        let (tx, launches) = mpsc::channel();
+        old.listen(move || tx.send(()).unwrap()).unwrap();
+        // The old instance quits (socket removed, then the process and its lock go) while the
+        // new one waits for the lock.
+        let quitting = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(150));
+            old.release();
+            drop(old);
+        });
+        match claim(dir.path(), Duration::from_secs(5)).unwrap() {
+            Claim::First(new) => {
+                assert!(dir.path().join(SOCKET).exists(), "the new instance listens");
+                drop(new);
+            }
+            Claim::Second => panic!("handed over to the exiting instance"),
+        }
+        quitting.join().unwrap();
+        assert!(launches.try_recv().is_err(), "nothing was handed over");
     }
 
     #[test]

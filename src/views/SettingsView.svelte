@@ -5,6 +5,7 @@
     { id: 'sounds', label: 'Sounds', icon: 'waveform' },
     { id: 'volume', label: 'Volume', icon: 'speaker' },
     { id: 'feel', label: 'Feel', icon: 'wave' },
+    { id: 'apps', label: 'Apps', icon: 'apps' },
     { id: 'shortcuts', label: 'Shortcuts', icon: 'keyboard' },
     { id: 'general', label: 'General', icon: 'toggle' },
     { id: 'about', label: 'About', icon: 'info' },
@@ -12,31 +13,37 @@
 
   type SectionId = (typeof SECTIONS)[number]['id'];
 
+  function sectionId(id: string | null): SectionId | null {
+    return SECTIONS.find((s) => s.id === id)?.id ?? null;
+  }
+
   function fromHash(): SectionId {
-    const id = window.location.hash.slice(1);
-    return SECTIONS.find((s) => s.id === id)?.id ?? 'sounds';
+    return sectionId(window.location.hash.slice(1)) ?? 'sounds';
   }
 </script>
 
 <script lang="ts">
   // The settings window: a sidebar of sections (a vertical tab list) and the selected one.
-  // The section is mirrored in the URL hash (#about) so a reload keeps it.
-  import { tick } from 'svelte';
+  // The section is mirrored in the URL hash (#about) so a reload keeps it; the popover can ask
+  // for one when it opens Settings ("Edit rules…", see section.ts).
+  import { tick, untrack } from 'svelte';
   import Icon from '../components/Icon.svelte';
   import Logo from '../components/Logo.svelte';
   import Notices from '../components/Notices.svelte';
   import Toast from '../components/Toast.svelte';
   import { platform } from '../lib/platform';
+  import { onSectionRequest, takeRequestedSection } from '../lib/section';
   import { playbackStatus } from '../lib/status';
   import { app } from '../lib/store.svelte';
   import AboutSection from './settings/AboutSection.svelte';
+  import AppsSection from './settings/AppsSection.svelte';
   import FeelSection from './settings/FeelSection.svelte';
   import GeneralSection from './settings/GeneralSection.svelte';
   import ShortcutsSection from './settings/ShortcutsSection.svelte';
   import SoundsSection from './settings/SoundsSection.svelte';
   import VolumeSection from './settings/VolumeSection.svelte';
 
-  let current = $state<SectionId>(fromHash());
+  let current = $state<SectionId>(sectionId(takeRequestedSection()) ?? fromHash());
   let content: HTMLElement | undefined = $state();
 
   const s = $derived(app.state);
@@ -76,9 +83,19 @@
 
   $effect(() => {
     document.title = 'TakTak Settings';
+    // A section the popover asked for goes into the hash too, so a reload keeps it.
+    const shown = untrack(() => current);
+    if (window.location.hash.slice(1) !== shown) history.replaceState(null, '', `#${shown}`);
     const onHash = () => select(fromHash());
     window.addEventListener('hashchange', onHash);
-    return () => window.removeEventListener('hashchange', onHash);
+    const stopRequests = onSectionRequest((id) => {
+      const section = sectionId(id);
+      if (section) select(section);
+    });
+    return () => {
+      window.removeEventListener('hashchange', onHash);
+      stopRequests();
+    };
   });
 </script>
 
@@ -116,7 +133,11 @@
     <div class="content-inner" id="panel" role="tabpanel" aria-labelledby="tab-{current}">
       {#if s}
         {#if current !== 'about'}
-          <Notices state={s} />
+          <Notices
+            state={s}
+            hide={current === 'apps' ? ['rules'] : []}
+            onrules={() => select('apps')}
+          />
         {/if}
         {#if current === 'sounds'}
           <SoundsSection {s} />
@@ -124,6 +145,8 @@
           <VolumeSection {s} />
         {:else if current === 'feel'}
           <FeelSection {s} />
+        {:else if current === 'apps'}
+          <AppsSection {s} />
         {:else if current === 'shortcuts'}
           <ShortcutsSection {s} />
         {:else if current === 'general'}

@@ -55,8 +55,8 @@ it with the rules in §3.
    keys). Letters have no key-up sound; Space and Enter play a space-bar release.
 6. **Loudness.** `volume` in `pack.json` is **0.94** (-0.5 dB): a playback gain the app
    applies to the whole pack, so no audio file changes. Typing loudness is matched across the
-   bundled packs so that switching packs does not jump in volume; the reference is the
-   synthesized packs' -25.8 LK. Measured with
+   bundled packs so that switching packs does not jump in volume; the target is TakTak's
+   reference typing level, -25.8 LK. Measured with
    `cargo run -p synth-packs --release -- loudness packs/linear-red`
    (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first
    100 ms of the sample each alphanumeric key plays on press by default, power-averaged over

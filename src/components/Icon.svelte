@@ -18,7 +18,15 @@
     | 'keyboard'
     | 'toggle'
     | 'shield'
-    | 'gauge';
+    | 'gauge'
+    | 'plus'
+    | 'search'
+    | 'apps'
+    | 'lock'
+    | 'copy'
+    | 'restart'
+    | 'chevron'
+    | 'headphones';
 </script>
 
 <script lang="ts">
@@ -102,6 +110,31 @@
   {:else if name === 'gauge'}
     <path d="M2.6 11.5a5.6 5.6 0 1 1 10.8 0" />
     <path d="M8 9.6l2.6-3.2" />
+  {:else if name === 'plus'}
+    <path d="M8 3.2v9.6M3.2 8h9.6" />
+  {:else if name === 'search'}
+    <circle cx="7" cy="7" r="4.3" />
+    <path d="M10.2 10.2l3.4 3.4" />
+  {:else if name === 'apps'}
+    <rect x="2.3" y="2.3" width="4.8" height="4.8" rx="1.3" />
+    <rect x="8.9" y="2.3" width="4.8" height="4.8" rx="1.3" />
+    <rect x="2.3" y="8.9" width="4.8" height="4.8" rx="1.3" />
+    <rect x="8.9" y="8.9" width="4.8" height="4.8" rx="1.3" />
+  {:else if name === 'lock'}
+    <rect x="3.3" y="7" width="9.4" height="6.6" rx="1.6" />
+    <path d="M5.4 7V5.3a2.6 2.6 0 0 1 5.2 0V7" />
+  {:else if name === 'copy'}
+    <rect x="5.6" y="5.6" width="7.9" height="7.9" rx="1.5" />
+    <path d="M10.4 5.6V3.9c0-.8-.6-1.4-1.4-1.4H3.9c-.8 0-1.4.6-1.4 1.4V9c0 .8.6 1.4 1.4 1.4h1.7" />
+  {:else if name === 'restart'}
+    <path d="M3.4 9.6a4.8 4.8 0 1 0 .9-5" />
+    <path d="M3.6 2.4v2.9h2.9" />
+  {:else if name === 'chevron'}
+    <path d="M6.2 3.6L10.6 8l-4.4 4.4" />
+  {:else if name === 'headphones'}
+    <path d="M2.6 11V8.6a5.4 5.4 0 0 1 10.8 0V11" />
+    <rect x="2.2" y="9.4" width="3" height="4.4" rx="1.2" />
+    <rect x="10.8" y="9.4" width="3" height="4.4" rx="1.2" />
   {/if}
 </svg>
 

@@ -7,7 +7,7 @@ function state(patch: Partial<AppState['settings']> = {}, top: Partial<AppState>
     version: '0.1.0',
     settings: {
       enabled: true,
-      packId: 'deep-thock',
+      packId: 'buckling-spring',
       masterVolume: 0.7,
       pressVolume: 1,
       releaseVolume: 1,
@@ -15,18 +15,26 @@ function state(patch: Partial<AppState['settings']> = {}, top: Partial<AppState>
       humanize: 0.25,
       muteHotkey: 'CommandOrControl+Alt+Shift+M',
       launchAtLogin: false,
+      appRule: { mode: 'everywhere', apps: [] },
+      muteOnOutputChange: false,
+      onboardingDone: true,
       ...patch,
     },
     muted: false,
     playing: true,
     packs: [],
     invalidPacks: [],
-    playingPackId: 'deep-thock',
+    playingPackId: 'buckling-spring',
     activePackError: null,
     muteHotkeyError: null,
     userPacksDir: null,
     permission: 'granted',
     audio: { device: 'Speakers', sampleRate: 48000, bufferFrames: 64, state: 'ok', message: null },
+    frontmostApp: { id: 'com.apple.Safari', name: 'Safari' },
+    ruleBlocked: false,
+    autoMute: null,
+    rulesSupported: true,
+    onboarding: { offer: false, permissionRequired: true, relaunchSuggested: false },
     ...top,
   };
 }
@@ -82,7 +90,7 @@ describe('Optimistic', () => {
     o.sent('packId', 'nope');
     expect(o.view?.settings.packId).toBe('nope');
     o.settled('packId', false);
-    expect(o.view?.settings.packId).toBe('deep-thock');
+    expect(o.view?.settings.packId).toBe('buckling-spring');
   });
 
   it('a slider is not pulled back by replies to its older values', () => {
@@ -105,7 +113,7 @@ describe('Optimistic', () => {
     o.event(state());
     const at = o.stamp;
     o.event(state({ packId: 'typewriter' }));
-    o.reply(state({ packId: 'deep-thock' }), at);
+    o.reply(state({ packId: 'buckling-spring' }), at);
     expect(o.view?.settings.packId).toBe('typewriter');
   });
 
@@ -151,6 +159,85 @@ describe('Optimistic', () => {
     expect(o.view?.playing).toBe(true);
     o.event(state({}, { permission: 'denied', playing: false }));
     o.sent('enabled', true);
+    expect(o.view?.playing).toBe(false);
+  });
+
+  it('an optimistic unmute or sounds-on clears an outputChanged auto-mute, as the app does', () => {
+    const { o } = setup();
+    o.event(state({}, { autoMute: 'outputChanged', playing: false }));
+    o.sent('muted', false);
+    expect(o.view?.autoMute).toBeNull();
+    expect(o.view?.playing).toBe(true);
+    o.settled('muted', false);
+    expect(o.view?.autoMute).toBe('outputChanged');
+    o.sent('enabled', true);
+    expect(o.view?.autoMute).toBeNull();
+    o.settled('enabled', false);
+    // Turning sounds off leaves it alone.
+    o.sent('enabled', false);
+    expect(o.view?.autoMute).toBe('outputChanged');
+    expect(o.view?.playing).toBe(false);
+  });
+
+  it('a screen lock or a rule block keeps an optimistic unmute silent', () => {
+    const { o } = setup();
+    o.event(state({}, { muted: true, autoMute: 'screenLocked', playing: false }));
+    o.sent('muted', false);
+    expect(o.view?.autoMute).toBe('screenLocked');
+    expect(o.view?.playing).toBe(false);
+    o.settled('muted', false);
+    o.event(state({}, { muted: true, ruleBlocked: true, playing: false }));
+    o.sent('muted', false);
+    expect(o.view?.playing).toBe(false);
+  });
+
+  it('a rule edit re-evaluates ruleBlocked and playing at once, and waits for the app to agree', () => {
+    const { o } = setup();
+    const slack = { id: 'com.tinyspeck.slackmacgap', name: 'Slack' };
+    o.event(state({}, { frontmostApp: slack }));
+    const never = { mode: 'never' as const, apps: [slack] };
+    o.sent('appRule', never);
+    expect(o.view?.settings.appRule).toEqual(never);
+    expect(o.view?.ruleBlocked).toBe(true);
+    expect(o.view?.playing).toBe(false);
+    o.settled('appRule', true);
+    // The app's state, an equal copy: the optimistic value goes.
+    o.event(
+      state(
+        { appRule: { mode: 'never', apps: [{ ...slack }] } },
+        { frontmostApp: slack, ruleBlocked: true, playing: false },
+      ),
+    );
+    expect(o.pending('appRule')).toBe(false);
+    // Removing it again: playing comes back before the reply.
+    o.sent('appRule', { mode: 'never', apps: [] });
+    expect(o.view?.ruleBlocked).toBe(false);
+    expect(o.view?.playing).toBe(true);
+    o.settled('appRule', false);
+    expect(o.view?.ruleBlocked).toBe(true);
+  });
+
+  it('two quick rule edits are not pulled back by the first reply', () => {
+    const { o } = setup();
+    const a = { id: 'a.app', name: 'A' };
+    const b = { id: 'b.app', name: 'B' };
+    o.event(state({ appRule: { mode: 'never', apps: [a, b] } }));
+    o.sent('appRule', { mode: 'never', apps: [b] });
+    o.sent('appRule', { mode: 'never', apps: [] });
+    o.reply(state({ appRule: { mode: 'never', apps: [b] } }), o.stamp);
+    o.settled('appRule', true);
+    expect(o.view?.settings.appRule.apps).toEqual([]);
+  });
+
+  it('turning "mute when the output changes" off clears that auto-mute at once', () => {
+    const { o } = setup();
+    o.event(state({ muteOnOutputChange: true }, { autoMute: 'outputChanged', playing: false }));
+    o.sent('muteOnOutputChange', false);
+    expect(o.view?.autoMute).toBeNull();
+    expect(o.view?.playing).toBe(true);
+    o.settled('muteOnOutputChange', false);
+    o.sent('muteOnOutputChange', true);
+    expect(o.view?.autoMute).toBe('outputChanged');
     expect(o.view?.playing).toBe(false);
   });
 });

@@ -93,8 +93,8 @@ original file):
 8. Written as 16-bit mono WAV at 44,100 Hz, the source rate (no resampling, no dither).
 9. Loudness: `volume` in `pack.json` is **0.94** (-0.5 dB), a playback gain the
    app applies to the whole pack, so no audio file changes. It matches typing loudness across
-   the bundled packs, so switching packs does not jump in volume; the reference is the
-   synthesized packs' -25.8 LK. Measured with
+   the bundled packs, so switching packs does not jump in volume; the target is TakTak's
+   reference typing level, -25.8 LK. Measured with
    `cargo run -p synth-packs --release -- loudness packs/office-classic`
    (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first
    100 ms of the sample each alphanumeric key plays on press by default, power-averaged over

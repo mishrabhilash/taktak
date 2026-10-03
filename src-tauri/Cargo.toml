@@ -36,8 +36,53 @@ tauri-plugin-positioner = { version = "2", features = ["tray-icon"] }
 tokio = { version = "1", default-features = false, features = ["signal"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-# `geteuid`, to trust only this user's single-instance socket (`src/instance.rs`).
+# `geteuid`, to trust only this user's single-instance socket (`src/instance.rs`); `getpid`.
 libc = "0.2.189"
+# Per-app rules and auto-mute (`src/apps.rs`): NSWorkspace observers (frontmost app, session),
+# the distributed screen-lock notifications, running apps, app icons and the app picker. The
+# same versions tao and wry already build.
+base64 = "0.22.1"
+block2 = "0.6.2"
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "libc",
+    "objc2-core-foundation",
+    "NSApplication",
+    "NSBitmapImageRep",
+    "NSGraphics",
+    "NSGraphicsContext",
+    "NSImage",
+    "NSImageRep",
+    "NSOpenPanel",
+    "NSPanel",
+    "NSResponder",
+    "NSRunningApplication",
+    "NSSavePanel",
+    "NSWindow",
+    "NSWorkspace",
+] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "CFDictionary",
+    "CFNotificationCenter",
+    "CFString",
+] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "block2",
+    "NSArray",
+    "NSBundle",
+    "NSData",
+    "NSDictionary",
+    "NSFileManager",
+    "NSGeometry",
+    "NSNotification",
+    "NSObject",
+    "NSString",
+    "NSURL",
+] }
 
 [target.'cfg(not(target_os = "macos"))'.dependencies]
 # Per user session there. On macOS it uses a socket in the shared /tmp, so `src/instance.rs`

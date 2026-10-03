@@ -3,15 +3,19 @@
 //!
 //! Synchronous commands run on the main thread, so none of them waits on I/O or decoding:
 //! packs load on `taktak-loader`, previews and engine work happen on `taktak-control`.
-//! Commands that start other programs are `async` (they run on the async runtime's threads).
+//! Commands that start other programs, create windows or need AppKit (running apps, icons, the
+//! app picker: done on the main thread, waited for here) are `async` (they run on the async
+//! runtime's threads).
 //!
 //! Every command rejects with a user-facing string on error.
 
 use crate::service::Service;
 use crate::settings::unit;
-use crate::state::{AppState, LatencyReport, VariantMode};
-use crate::{hotkey, system, windows};
+use crate::state::{AppInfo, AppRuleMode, AppState, LatencyReport, VariantMode};
+use crate::{apps, automute, hotkey, relaunch as restart, rules, system, tray, windows};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::mpsc;
 use std::time::Duration;
 use tauri::{AppHandle, Runtime, State};
 use tauri_plugin_autostart::ManagerExt;
@@ -23,8 +27,28 @@ pub const STATE_CHANGED: &str = "state-changed";
 /// longer; the command then resolves and the clip plays when it is ready.
 const PREVIEW_WAIT: Duration = Duration::from_secs(5);
 
+/// Icons rendered per trip to the main thread, so a long list never holds it for long.
+const ICON_BATCH: usize = 12;
+
 /// What the commands return: the value, or a message to show the user.
 pub type CmdResult<T> = Result<T, String>;
+
+/// Runs `task` on the main thread (AppKit wants it there) and waits for its result here, off
+/// the main thread.
+async fn on_main<R: Runtime, T: Send + 'static>(
+    app: &AppHandle<R>,
+    task: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = tx.send(task());
+    })
+    .map_err(|e| e.to_string())?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv())
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 pub fn get_state<R: Runtime>(window: tauri::Window<R>, service: State<'_, Service>) -> AppState {
@@ -32,14 +56,17 @@ pub fn get_state<R: Runtime>(window: tauri::Window<R>, service: State<'_, Servic
     service.snapshot()
 }
 
+/// Turning sounds on also clears an `outputChanged` auto-mute.
 #[tauri::command]
 pub fn set_enabled(service: State<'_, Service>, enabled: bool) -> AppState {
-    service.update(|s| s.settings.enabled = enabled)
+    service.update(|s| automute::set_enabled(s, enabled))
 }
 
+/// Either value also clears an `outputChanged` auto-mute (the manual mute takes over); a
+/// `screenLocked` one stays.
 #[tauri::command]
 pub fn set_muted(service: State<'_, Service>, muted: bool) -> AppState {
-    service.update(|s| s.muted = muted)
+    service.update(|s| automute::set_muted(s, muted))
 }
 
 #[tauri::command]
@@ -142,11 +169,17 @@ pub async fn open_user_packs_dir(service: State<'_, Service>) -> CmdResult<()> {
     })
 }
 
+/// macOS: first asks macOS to list TakTak under Input Monitoring (its own prompt shows the
+/// first time only; TakTak never prompts at startup), then opens that pane.
 #[tauri::command]
 pub async fn open_permission_settings() -> CmdResult<()> {
+    if taktak_core::input::request_permission() {
+        log::debug!("Input Monitoring is already granted");
+    }
     system::open_input_monitoring().map_err(|e| {
         log::warn!("cannot open the Input Monitoring settings: {e}");
-        "Could not open System Settings. Open Privacy & Security → Input Monitoring there."
+        "Could not open System Settings (System Preferences on macOS 12 and earlier). Open \
+         Privacy & Security → Input Monitoring there."
             .to_owned()
     })
 }
@@ -160,4 +193,144 @@ pub fn get_latency(service: State<'_, Service>) -> Option<LatencyReport> {
 #[tauri::command]
 pub fn quit<R: Runtime>(app: AppHandle<R>) {
     app.exit(0);
+}
+
+/// The running regular apps (`[]` where per-app rules are unsupported), with their icons.
+#[tauri::command]
+pub async fn list_running_apps<R: Runtime>(
+    app: AppHandle<R>,
+    service: State<'_, Service>,
+) -> CmdResult<Vec<AppInfo>> {
+    if !service.snapshot().rules_supported {
+        return Ok(Vec::new());
+    }
+    let running = on_main(&app, apps::running_apps).await.map_err(|e| {
+        log::warn!("cannot list the running apps: {e}");
+        "Could not list the running apps.".to_owned()
+    })?;
+    let ids: Vec<String> = running.iter().map(|a| a.id.clone()).collect();
+    let mut icons = app_icons(&app, ids, true).await?;
+    Ok(running
+        .into_iter()
+        .map(|a| AppInfo { icon_data_url: icons.remove(&a.id).flatten(), id: a.id, name: a.name })
+        .collect())
+}
+
+/// Icons for `ids`, rendered on the main thread a few at a time; cached if `keep`
+/// ([`apps::icons`]).
+async fn app_icons<R: Runtime>(
+    app: &AppHandle<R>,
+    ids: Vec<String>,
+    keep: bool,
+) -> CmdResult<HashMap<String, Option<String>>> {
+    let mut icons = HashMap::with_capacity(ids.len());
+    for batch in ids.chunks(ICON_BATCH) {
+        let batch = batch.to_vec();
+        let found = on_main(app, move || apps::icons(&batch, keep)).await.map_err(|e| {
+            log::warn!("cannot look up app icons: {e}");
+            "Could not load the app icons.".to_owned()
+        })?;
+        icons.extend(found);
+    }
+    Ok(icons)
+}
+
+/// The native picker for an app bundle; resolves when it closes (`null`: cancelled). It does
+/// not add the app.
+#[tauri::command]
+pub async fn choose_app<R: Runtime>(
+    app: AppHandle<R>,
+    service: State<'_, Service>,
+) -> CmdResult<Option<AppInfo>> {
+    if !service.snapshot().rules_supported {
+        return Err(apps::UNSUPPORTED.to_owned());
+    }
+    let (tx, rx) = mpsc::channel();
+    app.run_on_main_thread(move || {
+        apps::choose_app(Box::new(move |result| {
+            let _ = tx.send(result);
+        }));
+    })
+    .map_err(|e| format!("The app chooser could not be opened: {e}"))?;
+    tauri::async_runtime::spawn_blocking(move || rx.recv())
+        .await
+        .map_err(|e| format!("The app chooser could not be opened: {e}"))?
+        .map_err(|_| "The app chooser closed unexpectedly.".to_owned())?
+}
+
+/// An icon for each id (at most 200), for listed apps that are not running. Only the icons of
+/// apps on the rule list are cached; any other id (the frontmost app, for one) is looked up
+/// once and not kept, so the cache never collects the apps the user brought to the front.
+#[tauri::command]
+pub async fn get_app_icons<R: Runtime>(
+    app: AppHandle<R>,
+    service: State<'_, Service>,
+    ids: Vec<String>,
+) -> CmdResult<HashMap<String, Option<String>>> {
+    let ids = apps::icon_ids(ids);
+    if !service.snapshot().rules_supported {
+        return Ok(ids.into_iter().map(|id| (id, None)).collect());
+    }
+    let settings = service.snapshot().settings;
+    let (keep, once) =
+        apps::icon_lookups(ids, settings.app_rule.apps.iter().map(|a| a.id.as_str()));
+    let mut icons = app_icons(&app, keep, true).await?;
+    icons.extend(app_icons(&app, once, false).await?);
+    Ok(icons)
+}
+
+#[tauri::command]
+pub fn set_app_rule_mode(service: State<'_, Service>, mode: AppRuleMode) -> AppState {
+    service.update(|s| s.settings.app_rule.mode = mode)
+}
+
+/// Appends the app to the rule list (an id already listed changes nothing).
+#[tauri::command]
+pub fn add_rule_app(service: State<'_, Service>, id: String, name: String) -> CmdResult<AppState> {
+    service.try_update(|s| {
+        rules::add(&mut s.settings.app_rule, &id, &name).map(drop).map_err(str::to_owned)
+    })
+}
+
+#[tauri::command]
+pub fn remove_rule_app(service: State<'_, Service>, id: String) -> AppState {
+    service.update(|s| {
+        rules::remove(&mut s.settings.app_rule, &id);
+    })
+}
+
+/// Turning it off also clears an `outputChanged` auto-mute.
+#[tauri::command]
+pub fn set_mute_on_output_change(service: State<'_, Service>, enabled: bool) -> AppState {
+    service.update(|s| automute::set_mute_on_output_change(s, enabled))
+}
+
+/// Async so the window is built off the main thread (WebView2 deadlocks otherwise).
+#[tauri::command]
+pub async fn open_onboarding<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
+    windows::show_onboarding(&app).map_err(|e| format!("Could not open the welcome guide: {e}"))
+}
+
+/// Marks the onboarding as done, then closes its window (off this IPC call: the window may be
+/// the one asking).
+#[tauri::command]
+pub fn finish_onboarding<R: Runtime>(app: AppHandle<R>, service: State<'_, Service>) -> AppState {
+    let state = service.update(|s| s.settings.onboarding_done = true);
+    tray::spawn_window_task(&app, windows::close_onboarding);
+    state
+}
+
+/// Quits like `quit` and starts TakTak again (reopening the onboarding window if it is open).
+/// Rejects, without quitting, when the new instance cannot be started.
+#[tauri::command]
+pub async fn relaunch<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
+    let onboarding = windows::onboarding_open(&app);
+    restart::spawn(onboarding).map_err(|e| {
+        log::warn!("cannot start TakTak again: {e}");
+        "TakTak could not restart itself. Quit it and open it again.".to_owned()
+    })?;
+    log::info!("restarting");
+    windows::mark_exiting();
+    app.exit(0);
+    Ok(())
 }

@@ -61,7 +61,7 @@ The strongest key-down (Vintage Keyboard 4) is only 2.8 dB above the median of t
 
 ## Loudness
 
-`volume` in `pack.json` is 0.88 (-1.1 dB): a playback gain the app applies to the whole pack, so no audio file changes. Typing loudness is matched across the bundled packs so that switching packs does not jump in volume; the reference is the synthesized packs' -25.8 LK. Measured with `cargo run -p synth-packs --release -- loudness packs/vintage-keyboard` (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first 100 ms of the sample each alphanumeric key plays on press by default, power-averaged over the keys, on the samples as the app loads them at 48 kHz. The pack reads -24.7 LK as built and -25.8 LK at this volume; the loudest true peak at the top of the volume variation becomes -5.90 dBFS. `build.py` writes the volume (`VOLUME`), so a rebuild keeps it.
+`volume` in `pack.json` is 0.88 (-1.1 dB): a playback gain the app applies to the whole pack, so no audio file changes. Typing loudness is matched across the bundled packs so that switching packs does not jump in volume; the target is TakTak's reference typing level, -25.8 LK. Measured with `cargo run -p synth-packs --release -- loudness packs/vintage-keyboard` (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first 100 ms of the sample each alphanumeric key plays on press by default, power-averaged over the keys, on the samples as the app loads them at 48 kHz. The pack reads -24.7 LK as built and -25.8 LK at this volume; the loudest true peak at the top of the volume variation becomes -5.90 dBFS. `build.py` writes the volume (`VOLUME`), so a rebuild keeps it.
 
 ## Levels
 

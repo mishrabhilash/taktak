@@ -1,11 +1,14 @@
 //! The menu-bar / tray icon: left click toggles the popover, right click opens the native menu
 //! (`Sounds On`, `Pack ▸`, `Mute`, `Settings…`, `Quit TakTak`), kept in sync with the state.
+//! While sounds are on and not muted by hand but still silent, a status item at the top of the
+//! menu and the tooltip say why ([`status`]).
 //!
 //! Menu items live on the main thread: [`sync`] and the menu handler run there (state changes
 //! reach it through `AppHandle::run_on_main_thread`).
 
+use crate::automute;
 use crate::service::Service;
-use crate::state::AppState;
+use crate::state::{AppState, AudioState, AutoMute, Permission};
 use crate::windows;
 use std::sync::{Mutex, PoisonError};
 use tauri::image::Image;
@@ -18,6 +21,7 @@ use tauri::{AppHandle, Manager, Runtime};
 /// The tray icon's id.
 pub const ID: &str = "main";
 
+const MENU_STATUS: &str = "status";
 const MENU_ENABLED: &str = "enabled";
 const MENU_PACKS: &str = "packs";
 const MENU_NO_PACKS: &str = "no-packs";
@@ -34,10 +38,54 @@ const ICON: &[u8] = include_bytes!("../icons/tray-template@2x.png");
 #[cfg(not(target_os = "macos"))]
 const ICON: &[u8] = include_bytes!("../icons/tray-color@2x.png");
 
+/// Why TakTak is silent although sounds are on and not muted by hand: the status item's text
+/// (escaped) and whether choosing it does something (opens the onboarding window).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Status {
+    pub text: String,
+    pub actionable: bool,
+}
+
+/// The tray's status item for `state`, if any (`docs/ui-contract.md` § Windows, the tray), the
+/// first reason that applies: screen locked, output changed, Input Monitoring missing, no sound
+/// output, a per-app rule.
+pub fn status(state: &AppState) -> Option<Status> {
+    if !state.settings.enabled || state.muted {
+        return None;
+    }
+    let (text, actionable) = match state.auto_mute {
+        Some(AutoMute::ScreenLocked) => ("Muted — screen locked".to_owned(), false),
+        Some(AutoMute::OutputChanged) => ("Muted — output device changed".to_owned(), false),
+        None if state.permission == Permission::Denied => {
+            ("Needs Input Monitoring…".to_owned(), true)
+        }
+        None if state.audio.state == AudioState::Fault => ("No sound output".to_owned(), false),
+        None if state.rule_blocked => {
+            let app = state.frontmost_app.as_ref().map_or("this app".into(), |app| {
+                taktak_core::pack::printable(&app.name).into_owned()
+            });
+            (format!("Silent in {app}"), false)
+        }
+        None => return None,
+    };
+    Some(Status { text, actionable })
+}
+
+/// The tray icon's tooltip: `TakTak`, or `TakTak — <status>` (without a trailing `…`).
+pub fn tooltip(status: Option<&Status>) -> String {
+    match status {
+        Some(status) => format!("TakTak — {}", status.text.trim_end_matches('…')),
+        None => "TakTak".to_owned(),
+    }
+}
+
 /// What the menu shows, from the [`AppState`].
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct MenuModel {
+    /// The status item, when there is one.
+    pub status: Option<Status>,
     pub enabled: bool,
+    /// The mute switch: muted by hand, or auto-muted because the output changed.
     pub muted: bool,
     /// Shown next to `Mute`: the registered hotkey only (not a saved one that failed).
     pub hotkey: Option<String>,
@@ -49,8 +97,9 @@ pub struct MenuModel {
 impl MenuModel {
     pub fn of(state: &AppState) -> MenuModel {
         MenuModel {
+            status: status(state),
             enabled: state.settings.enabled,
-            muted: state.muted,
+            muted: automute::effective_mute(state),
             hotkey: state
                 .mute_hotkey_error
                 .is_none()
@@ -65,13 +114,19 @@ impl MenuModel {
 /// A pack name as a menu label: control characters escaped, and on Windows `&` doubled so it
 /// is not taken for a mnemonic.
 fn label(name: &str) -> String {
-    let text = taktak_core::pack::printable(name);
-    if cfg!(target_os = "windows") { text.replace('&', "&&") } else { text.into_owned() }
+    mnemonic_safe(&taktak_core::pack::printable(name))
+}
+
+/// `text` (already escaped) as a menu label: on Windows `&` is doubled.
+fn mnemonic_safe(text: &str) -> String {
+    if cfg!(target_os = "windows") { text.replace('&', "&&") } else { text.to_owned() }
 }
 
 /// What a menu item does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuAction {
+    /// The status item (enabled only for "Needs Input Monitoring…"): opens the onboarding.
+    Status,
     ToggleEnabled,
     ToggleMute,
     SelectPack(String),
@@ -82,6 +137,7 @@ pub enum MenuAction {
 impl MenuAction {
     pub fn of(id: &str) -> Option<MenuAction> {
         match id {
+            MENU_STATUS => Some(MenuAction::Status),
             MENU_ENABLED => Some(MenuAction::ToggleEnabled),
             MENU_MUTE => Some(MenuAction::ToggleMute),
             MENU_SETTINGS => Some(MenuAction::Settings),
@@ -93,6 +149,10 @@ impl MenuAction {
 
 /// The live menu items and what they last showed.
 struct TrayMenu<R: Runtime> {
+    menu: Menu<R>,
+    /// The status item and its separator, at the top of `menu` while a status shows.
+    status: MenuItem<R>,
+    status_separator: PredefinedMenuItem<R>,
     enabled: CheckMenuItem<R>,
     mute: CheckMenuItem<R>,
     packs: Submenu<R>,
@@ -113,6 +173,9 @@ impl<R: Runtime> TrayMenu<R> {
         if !force && *model == self.shown {
             return Ok(());
         }
+        if model.status != self.shown.status {
+            self.show_status(app, model.status.as_ref())?;
+        }
         self.enabled.set_checked(model.enabled)?;
         self.mute.set_checked(model.muted)?;
         if model.hotkey != self.shown.hotkey
@@ -129,6 +192,31 @@ impl<R: Runtime> TrayMenu<R> {
             item.set_checked(*id == model.selected)?;
         }
         self.shown = model.clone();
+        Ok(())
+    }
+
+    /// Shows `status` at the top of the menu (and in the tooltip), or removes it.
+    fn show_status(&mut self, app: &AppHandle<R>, status: Option<&Status>) -> tauri::Result<()> {
+        let shown = self.shown.status.is_some();
+        match status {
+            Some(status) => {
+                self.status.set_text(mnemonic_safe(&status.text))?;
+                self.status.set_enabled(status.actionable)?;
+                if !shown {
+                    self.menu.insert(&self.status, 0)?;
+                    self.menu.insert(&self.status_separator, 1)?;
+                }
+            }
+            None if shown => {
+                self.menu.remove(&self.status_separator)?;
+                self.menu.remove(&self.status)?;
+            }
+            None => {}
+        }
+        // Absent until the icon is built in `create`, which then sets the first tooltip itself.
+        if let Some(tray) = app.tray_by_id(ID) {
+            tray.set_tooltip(Some(tooltip(status)))?;
+        }
         Ok(())
     }
 
@@ -168,6 +256,8 @@ impl<R: Runtime> TrayMenu<R> {
 
 /// Creates the tray icon and its menu showing `state`. Call once, from `setup`.
 pub fn create<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> tauri::Result<()> {
+    let status = MenuItem::with_id(app, MENU_STATUS, "", false, None::<&str>)?;
+    let status_separator = PredefinedMenuItem::separator(app)?;
     let enabled = CheckMenuItem::with_id(app, MENU_ENABLED, "Sounds On", true, true, None::<&str>)?;
     let packs = Submenu::with_id(app, MENU_PACKS, "Pack", true)?;
     let mute = CheckMenuItem::with_id(app, MENU_MUTE, "Mute", true, false, None::<&str>)?;
@@ -184,7 +274,11 @@ pub fn create<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> tauri::Result
     ];
     let menu = Menu::with_items(app, &items)?;
 
+    let model = MenuModel::of(state);
     let mut tray_menu = TrayMenu {
+        menu: menu.clone(),
+        status,
+        status_separator,
         enabled,
         mute,
         packs,
@@ -194,13 +288,13 @@ pub fn create<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> tauri::Result
         shown: MenuModel { hotkey: Some(String::new()), ..MenuModel::default() },
     };
     tray_menu.rebuild_packs(app, &[])?;
-    tray_menu.apply(app, &MenuModel::of(state), true)?;
+    tray_menu.apply(app, &model, true)?;
     app.manage(TrayState(Mutex::new(Some(tray_menu))));
 
     TrayIconBuilder::with_id(ID)
         .icon(Image::from_bytes(ICON)?)
         .icon_as_template(cfg!(target_os = "macos"))
-        .tooltip("TakTak")
+        .tooltip(tooltip(model.status.as_ref()))
         .menu(&menu)
         .show_menu_on_left_click(false)
         .on_menu_event(on_menu_event)
@@ -239,11 +333,16 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
     let Some(action) = MenuAction::of(event.id().as_ref()) else { return };
     let Some(service) = app.try_state::<Service>() else { return };
     match action {
+        MenuAction::Status => {
+            if service.snapshot().permission == Permission::Denied {
+                spawn_window_task(app, windows::show_onboarding);
+            }
+        }
         MenuAction::ToggleEnabled => {
-            service.update(|s| s.settings.enabled = !s.settings.enabled);
+            service.update(|s| automute::set_enabled(s, !s.settings.enabled));
         }
         MenuAction::ToggleMute => {
-            service.update(|s| s.muted = !s.muted);
+            service.update(automute::toggle_mute);
         }
         MenuAction::SelectPack(id) => {
             if let Err(e) = service.set_pack(&id) {
@@ -294,13 +393,14 @@ mod tests {
     #[test]
     fn model_follows_the_state() {
         let mut state = AppState::initial("0.1.0", Settings::default());
-        state.packs = vec![pack("blue-click", "Blue Click"), pack("evil", "Evil\nName")];
+        state.packs = vec![pack("typewriter", "Typewriter"), pack("evil", "Evil\nName")];
         state.muted = true;
         let model = MenuModel::of(&state);
         assert!(model.enabled && model.muted);
+        assert_eq!(model.status, None, "muted by hand: no status item");
         assert_eq!(model.hotkey.as_deref(), Some("CommandOrControl+Alt+Shift+M"));
-        assert_eq!(model.selected, "deep-thock");
-        assert_eq!(model.packs[0], ("blue-click".to_owned(), "Blue Click".to_owned()));
+        assert_eq!(model.selected, "buckling-spring");
+        assert_eq!(model.packs[0], ("typewriter".to_owned(), "Typewriter".to_owned()));
         assert_eq!(model.packs[1].1, "Evil\\nName");
     }
 
@@ -316,14 +416,70 @@ mod tests {
     }
 
     #[test]
+    fn the_status_item_says_why_it_is_silent() {
+        use crate::automute::Event;
+        use crate::service::derive;
+        use crate::state::{AppRef, AppRule, AppRuleEntry, AppRuleMode};
+
+        let mut state = AppState::initial("0.1.0", Settings::default());
+        state.permission = Permission::Granted;
+        state.audio.state = AudioState::Ok;
+        assert_eq!(status(&state), None, "playing");
+        assert_eq!(tooltip(None), "TakTak");
+
+        // Last reason first: a per-app rule.
+        state.rules_supported = true;
+        state.settings.app_rule = AppRule {
+            mode: AppRuleMode::Never,
+            apps: vec![AppRuleEntry { id: "com.x".into(), name: "X".into() }],
+        };
+        state.frontmost_app = Some(AppRef { id: "com.x".into(), name: "Evil\nApp".into() });
+        derive(&mut state);
+        let s = status(&state).unwrap();
+        assert_eq!(s, Status { text: "Silent in Evil\\nApp".into(), actionable: false });
+        assert_eq!(tooltip(Some(&s)), "TakTak — Silent in Evil\\nApp");
+        state.settings.app_rule.mode = AppRuleMode::Only;
+        state.frontmost_app = None;
+        derive(&mut state);
+        assert_eq!(status(&state).unwrap().text, "Silent in this app");
+
+        state.audio.state = AudioState::Fault;
+        assert_eq!(status(&state).unwrap().text, "No sound output");
+
+        state.permission = Permission::Denied;
+        let s = status(&state).unwrap();
+        assert_eq!(s, Status { text: "Needs Input Monitoring…".into(), actionable: true });
+        assert_eq!(tooltip(Some(&s)), "TakTak — Needs Input Monitoring");
+
+        state.settings.mute_on_output_change = true;
+        crate::automute::output_changed(&mut state);
+        derive(&mut state);
+        assert_eq!(status(&state).unwrap().text, "Muted — output device changed");
+        assert!(MenuModel::of(&state).muted, "the Mute check shows the output change");
+
+        state.auto_mute_reasons.apply(Event::ScreenLocked);
+        derive(&mut state);
+        assert_eq!(status(&state).unwrap().text, "Muted — screen locked");
+
+        // Sounds off or muted by hand: no status item at all.
+        state.muted = true;
+        assert_eq!(status(&state), None);
+        state.muted = false;
+        state.settings.enabled = false;
+        assert_eq!(status(&state), None);
+        assert_eq!(MenuModel::of(&state).status, None);
+    }
+
+    #[test]
     fn menu_ids_map_to_actions() {
+        assert_eq!(MenuAction::of(MENU_STATUS), Some(MenuAction::Status));
         assert_eq!(MenuAction::of(MENU_ENABLED), Some(MenuAction::ToggleEnabled));
         assert_eq!(MenuAction::of(MENU_MUTE), Some(MenuAction::ToggleMute));
         assert_eq!(MenuAction::of(MENU_SETTINGS), Some(MenuAction::Settings));
         assert_eq!(MenuAction::of(MENU_QUIT), Some(MenuAction::Quit));
         assert_eq!(
-            MenuAction::of("pack:deep-thock"),
-            Some(MenuAction::SelectPack("deep-thock".into()))
+            MenuAction::of("pack:buckling-spring"),
+            Some(MenuAction::SelectPack("buckling-spring".into()))
         );
         assert_eq!(MenuAction::of(MENU_PACKS), None);
         assert_eq!(MenuAction::of(MENU_NO_PACKS), None);

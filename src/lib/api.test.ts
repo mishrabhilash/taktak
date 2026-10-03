@@ -19,7 +19,7 @@ describe('api (mock backend)', () => {
     const unlisten = await api.onStateChanged((s) => events.push(s));
     try {
       const initial = await api.getState();
-      expect(initial.settings.packId).toBe('deep-thock');
+      expect(initial.settings.packId).toBe('buckling-spring');
 
       expect((await api.setEnabled(false)).settings.enabled).toBe(false);
       expect((await api.setEnabled(true)).settings.enabled).toBe(true);
@@ -44,6 +44,27 @@ describe('api (mock backend)', () => {
     }
   });
 
+  it('round-trips the Milestone 4 commands through the wrappers', async () => {
+    const apps = await api.listRunningApps();
+    expect(apps.length).toBeGreaterThan(0);
+    const slack = apps.find((a) => a.name === 'Slack');
+    expect(slack).toBeDefined();
+    if (!slack) return;
+    let s = await api.addRuleApp(slack);
+    expect(s.settings.appRule.apps).toContainEqual({ id: slack.id, name: 'Slack' });
+    expect((await api.setAppRuleMode('never')).settings.appRule.mode).toBe('never');
+    s = await api.removeRuleApp(slack.id);
+    expect(s.settings.appRule.apps.some((a) => a.id === slack.id)).toBe(false);
+    expect((await api.setAppRuleMode('everywhere')).settings.appRule.mode).toBe('everywhere');
+    expect((await api.setMuteOnOutputChange(true)).settings.muteOnOutputChange).toBe(true);
+    expect((await api.setMuteOnOutputChange(false)).settings.muteOnOutputChange).toBe(false);
+    const icons = await api.getAppIcons([slack.id]);
+    expect(icons[slack.id]).toBe(slack.iconDataUrl);
+    const picked = await api.chooseApp();
+    expect(picked?.id).toBe('com.microsoft.Word');
+    expect((await api.finishOnboarding()).settings.onboardingDone).toBe(true);
+  });
+
   it('void commands resolve to undefined', async () => {
     await expect(api.stopPreview()).resolves.toBeUndefined();
     await expect(api.openSettings()).resolves.toBeUndefined();
@@ -51,6 +72,8 @@ describe('api (mock backend)', () => {
     await expect(api.openUserPacksDir()).resolves.toBeUndefined();
     await expect(api.openPermissionSettings()).resolves.toBeUndefined();
     await expect(api.quit()).resolves.toBeUndefined();
+    await expect(api.openOnboarding()).resolves.toBeUndefined();
+    await expect(api.relaunch()).resolves.toBeUndefined();
   });
 
   it('get_latency starts out null', async () => {

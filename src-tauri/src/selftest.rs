@@ -1,24 +1,30 @@
 //! `taktak --selftest [--allow-no-audio] [--packs <dir>]`: a headless check of the app layer
 //! for CI and integration runs. No window, no tray, no keyboard listener and no permission
 //! prompt. It scans the bundled packs, opens the default output device, loads every pack at
-//! the device rate and swaps each into the engine, checks the input gate and settings
-//! persistence (in a temporary folder), then runs the real [`Service`] (control thread, loader,
+//! the device rate and swaps each into the engine, checks the input gate, per-app rule
+//! evaluation, the auto-mute state machine, the onboarding decision, settings persistence and
+//! migration (in a temporary folder), then runs the real [`Service`] (control thread, loader,
 //! registry watcher) through pack switches, a preview that opens and closes the output (closed
-//! otherwise: nothing can play without a listener), and a hot-reloaded user pack that breaks
+//! otherwise: nothing can play without a listener), a saved selection of a pack TakTak no longer
+//! bundles (moved to the default pack), and a hot-reloaded user pack that breaks
 //! (and is named as broken by a freshly started service) and is deleted. Prints one line per
 //! check with its timing; exit code 0 when nothing failed.
 //!
 //! `--allow-no-audio` turns "no output device" into skipped playback checks instead of a
 //! failure (for machines without audio hardware).
 
+use crate::automute::{self, Event};
 use crate::catalog;
 use crate::input;
 use crate::loader;
+use crate::rules;
 use crate::service::{Config, NO_OUTPUT, Service, Shared};
 use crate::settings::{self, Persister};
 use crate::state::{
-    AppState, AudioState, DEFAULT_PACK_ID, PackOrigin, Permission, Settings, VariantMode,
+    AppRef, AppRule, AppRuleEntry, AppRuleMode, AppState, AudioState, AutoMute, DEFAULT_PACK_ID,
+    PackOrigin, Permission, RETIRED_PACK_IDS, Settings, VariantMode,
 };
+use crate::windows;
 use std::fmt::Write as _;
 use std::fs;
 use std::io;
@@ -191,8 +197,12 @@ pub fn run(version: &str, resource_dir: Option<PathBuf>, args: &[String]) -> i32
         None => report.skip("swap every pack into the engine", "no audio output"),
     }
     report.check("input gate (enabled and mute)", gate);
+    report.check("per-app rules (only, never, unknown app)", app_rules);
+    report.check("auto-mute (lock, session, output change)", auto_mute);
+    report.check("onboarding decision", onboarding);
     report.check("settings persist and reload", || persist(&scratch));
     report.check("settings corrupt-file recovery", || recover(&scratch));
+    report.check("settings migration (Milestone 3 file)", || migrate(&scratch));
 
     match (&bundled, &packs) {
         (Some(bundled), Some(packs)) if !packs.is_empty() => {
@@ -306,15 +316,15 @@ fn swap(engine: &mut Engine, banks: Vec<SoundBank>) -> Result<((), String), Stri
     Ok(((), format!("{count} swaps, preview played and stopped, no stream fault")))
 }
 
+/// A [`Shared`] like the service's, without a control thread, persistence or events.
+fn bare_shared(settings: Settings) -> Shared {
+    let (tx, _rx) = mpsc::channel();
+    Shared::new(AppState::initial("selftest", settings), tx, Box::new(|_| {}), Box::new(|_, _| {}))
+}
+
 /// The gate the key hook checks, driven through the same [`Shared`] the commands use.
 fn gate() -> Result<((), String), String> {
-    let (tx, _rx) = mpsc::channel();
-    let shared = Shared::new(
-        AppState::initial("selftest", Settings::default()),
-        tx,
-        Box::new(|_| {}),
-        Box::new(|_, _| {}),
-    );
+    let shared = bare_shared(Settings::default());
     let sent = AtomicUsize::new(0);
     let press = || {
         let event =
@@ -350,6 +360,161 @@ fn gate() -> Result<((), String), String> {
     Ok(((), format!("4 combinations, {} event(s) forwarded", sent.load(Ordering::Relaxed))))
 }
 
+/// Per-app rules through [`Shared`]: which frontmost app is silenced in each mode, and that a
+/// block closes the hook's gate.
+fn app_rules() -> Result<((), String), String> {
+    let shared = bare_shared(Settings::default());
+    shared.update(|s| {
+        s.permission = Permission::Granted;
+        s.audio.state = AudioState::Ok;
+        s.rules_supported = true;
+        s.settings.app_rule.apps =
+            vec![AppRuleEntry { id: "com.tinyspeck.slackmacgap".into(), name: "Slack".into() }];
+    });
+    let slack = || Some(AppRef { id: "com.tinyspeck.slackmacgap".into(), name: "Slack".into() });
+    let safari = || Some(AppRef { id: "com.apple.Safari".into(), name: "Safari".into() });
+    let cases = [
+        (AppRuleMode::Everywhere, slack(), false),
+        (AppRuleMode::Everywhere, None, false),
+        (AppRuleMode::Only, slack(), false),
+        (AppRuleMode::Only, safari(), true),
+        (AppRuleMode::Only, None, true),
+        (AppRuleMode::Never, slack(), true),
+        (AppRuleMode::Never, safari(), false),
+        (AppRuleMode::Never, None, false),
+    ];
+    for (mode, app, blocked) in cases.clone() {
+        let name = app.as_ref().map_or("unknown".to_owned(), |a| a.name.clone());
+        let state = shared.update(|s| {
+            s.settings.app_rule.mode = mode;
+            s.frontmost_app = app;
+        });
+        let gate = shared.gate().load(Ordering::Relaxed);
+        if state.rule_blocked != blocked || gate == blocked || state.playing == blocked {
+            return Err(format!(
+                "{mode:?} with {name} in front: blocked {}, gate {gate}, playing {}",
+                state.rule_blocked, state.playing
+            ));
+        }
+        if state.muted || !state.settings.enabled || state.auto_mute.is_some() {
+            return Err("a rule changed the mute or the master switch".into());
+        }
+    }
+    // Where rules are unsupported nothing is blocked, and the frontmost app is not kept.
+    let state = shared.update(|s| {
+        s.settings.app_rule.mode = AppRuleMode::Never;
+        s.rules_supported = false;
+        s.frontmost_app = slack();
+    });
+    if state.rule_blocked || state.frontmost_app.is_some() {
+        return Err("rules applied where they are unsupported".into());
+    }
+    let mut rule = AppRule::default();
+    let added = rules::add(&mut rule, " com.apple.Safari ", "Safari");
+    let rejected =
+        [rules::add(&mut rule, "tech.taktak.app", "TakTak"), rules::add(&mut rule, "a b", "")];
+    if added != Ok(true) || rejected != [Err(rules::OWN_APP), Err(rules::NOT_AN_APP)] {
+        return Err(format!("add_rule_app checks: {added:?}, {rejected:?}"));
+    }
+    Ok(((), format!("{} mode × app combinations; unsupported ignores rules", cases.len())))
+}
+
+/// The auto-mute reasons through [`Shared`]: lock and session, an armed output change that
+/// outlasts a lock and only an unmute clears, and the gate closed meanwhile.
+fn auto_mute() -> Result<((), String), String> {
+    let shared = bare_shared(Settings { mute_on_output_change: true, ..Settings::default() });
+    shared.update(|s| {
+        s.permission = Permission::Granted;
+        s.audio.state = AudioState::Ok;
+    });
+    let expect = |state: &AppState, want: Option<AutoMute>, step: &str| {
+        let gate = shared.gate().load(Ordering::Relaxed);
+        if state.auto_mute != want || gate != want.is_none() || state.playing != want.is_none() {
+            return Err(format!("{step}: auto-mute {:?}, gate {gate}", state.auto_mute));
+        }
+        if state.muted {
+            return Err(format!("{step}: auto-mute set the manual mute"));
+        }
+        Ok(())
+    };
+    let state = shared.update(|s| s.auto_mute_reasons.apply(Event::ScreenLocked));
+    expect(&state, Some(AutoMute::ScreenLocked), "locked")?;
+    let state = shared.update(|s| s.auto_mute_reasons.apply(Event::SessionInactive));
+    expect(&state, Some(AutoMute::ScreenLocked), "session inactive")?;
+    // Headphones unplugged at the lock screen.
+    let state = shared.update(automute::output_changed);
+    expect(&state, Some(AutoMute::ScreenLocked), "output changed while locked")?;
+    let state = shared.update(|s| s.auto_mute_reasons.apply(Event::ScreenUnlocked));
+    expect(&state, Some(AutoMute::ScreenLocked), "unlocked, session still inactive")?;
+    let state = shared.update(|s| s.auto_mute_reasons.apply(Event::SessionActive));
+    expect(&state, Some(AutoMute::OutputChanged), "back, output change pending")?;
+    if !automute::effective_mute(&state) {
+        return Err("the mute switch does not show the output change".into());
+    }
+    // The hotkey (or tray) unmutes, clearing it.
+    let state = shared.update(automute::toggle_mute);
+    expect(&state, None, "unmuted")?;
+    // Muted by hand or with the setting off, a device change does not auto-mute.
+    shared.update(|s| automute::set_muted(s, true));
+    let state = shared.update(automute::output_changed);
+    if state.auto_mute.is_some() {
+        return Err("an output change auto-muted while muted by hand".into());
+    }
+    shared.update(|s| {
+        automute::set_muted(s, false);
+        automute::set_mute_on_output_change(s, false);
+    });
+    let state = shared.update(automute::output_changed);
+    expect(&state, None, "setting off")?;
+    let mut watch = automute::DeviceWatch::default();
+    let seen = [
+        watch.see(Some("Speakers")),
+        watch.see(None),
+        watch.see(Some("Speakers")),
+        watch.see(Some("AirPods")),
+    ];
+    if seen != [false, false, false, true] {
+        return Err(format!("device changes seen as {seen:?}"));
+    }
+    Ok(((), "lock/session, armed output change, unmute clears; device watch".into()))
+}
+
+/// The onboarding offer, live through [`Shared`].
+fn onboarding() -> Result<((), String), String> {
+    let shared = bare_shared(Settings::default());
+    let offer = |change: &dyn Fn(&mut AppState)| shared.update(|s| change(s)).onboarding.offer;
+    let steps = [
+        ("first launch", offer(&|_| {}), true),
+        (
+            "done, permission unknown",
+            offer(&|s| {
+                s.settings.onboarding_done = true;
+                s.onboarding.permission_required = true;
+            }),
+            false,
+        ),
+        ("Input Monitoring missing", offer(&|s| s.permission = Permission::Denied), true),
+        ("granted", offer(&|s| s.permission = Permission::Granted), false),
+        (
+            "no permission step",
+            offer(&|s| {
+                s.onboarding.permission_required = false;
+                s.permission = Permission::Denied;
+            }),
+            false,
+        ),
+    ];
+    for (step, got, want) in steps {
+        if got != want {
+            return Err(format!("{step}: offer {got}, expected {want}"));
+        }
+    }
+    if !windows::open_at_startup(false, true) || windows::open_at_startup(false, false) {
+        return Err("a relaunch from the onboarding window does not reopen it".into());
+    }
+    Ok(((), format!("{} steps", steps.len())))
+}
+
 fn persist(scratch: &Path) -> Result<((), String), String> {
     let path = scratch.join("persist").join(settings::FILE_NAME);
     let persister = Persister::start(path.clone(), Settings::default(), settings::DEBOUNCE)
@@ -379,6 +544,46 @@ fn persist(scratch: &Path) -> Result<((), String), String> {
         return Err(format!("read back {:?} ({:?})", loaded.settings, loaded.note));
     }
     Ok(((), format!("11 debounced saves → 1 write, read back equal ({})", path.display())))
+}
+
+/// A Milestone 3 settings file loads with the new defaults (onboarding counted as done), and
+/// `appRule` leniency keeps the good entries of a damaged list.
+fn migrate(scratch: &Path) -> Result<((), String), String> {
+    let path = scratch.join("migrate").join(settings::FILE_NAME);
+    fs::create_dir_all(path.parent().unwrap_or(scratch)).map_err(|e| e.to_string())?;
+    let m3 = r#"{"enabled": true, "packId": "typewriter", "masterVolume": 0.5, "pressVolume": 1.0,
+        "releaseVolume": 1.0, "variantMode": "random", "humanize": 0.25,
+        "muteHotkey": "CommandOrControl+Alt+Shift+M", "launchAtLogin": false}"#;
+    fs::write(&path, m3).map_err(|e| e.to_string())?;
+    let loaded = settings::load(&path);
+    let s = &loaded.settings;
+    if !s.onboarding_done
+        || s.mute_on_output_change
+        || s.app_rule != AppRule::default()
+        || s.pack_id != "typewriter"
+        || loaded.note.is_some()
+    {
+        return Err(format!("Milestone 3 file read as {s:?} ({:?})", loaded.note));
+    }
+    fs::write(
+        &path,
+        r#"{"onboardingDone": false, "appRule": {"mode": "never", "apps": [
+            {"id": " com.apple.Safari ", "name": "Safari", "future": 1}, {"name": "no id"},
+            "bare", {"id": "us.zoom.xos"}, {"id": "com.apple.Safari"}]}}"#,
+    )
+    .map_err(|e| e.to_string())?;
+    let loaded = settings::load(&path);
+    let want = AppRule {
+        mode: AppRuleMode::Never,
+        apps: vec![
+            AppRuleEntry { id: "com.apple.Safari".into(), name: "Safari".into() },
+            AppRuleEntry { id: "us.zoom.xos".into(), name: "us.zoom.xos".into() },
+        ],
+    };
+    if loaded.settings.app_rule != want || loaded.settings.onboarding_done {
+        return Err(format!("damaged rule list read as {:?}", loaded.settings.app_rule));
+    }
+    Ok(((), "new fields defaulted, onboarding done; 2 of 5 rule entries kept".into()))
 }
 
 fn recover(scratch: &Path) -> Result<((), String), String> {
@@ -500,12 +705,40 @@ fn service_checks(
                 s.muted = muted;
             });
             let open = gate.load(Ordering::Relaxed);
-            if open != input::gate_open(enabled, muted) {
+            if open != rules::gate_open(enabled, muted, false, false) {
                 return Err(format!("enabled={enabled} muted={muted}: gate {open}"));
             }
             let _ = write!(seen, "{}", u8::from(open));
         }
         Ok(((), format!("gate {seen} for (on, muted) (off) (on)")))
+    });
+
+    report.check("service: a per-app rule closes the gate", || {
+        let gate = service.gate().clone();
+        let slack = AppRef { id: "com.tinyspeck.slackmacgap".into(), name: "Slack".into() };
+        let state = service.update(|s| {
+            s.rules_supported = true;
+            s.settings.app_rule = AppRule {
+                mode: AppRuleMode::Never,
+                apps: vec![AppRuleEntry { id: slack.id.clone(), name: slack.name.clone() }],
+            };
+            s.frontmost_app = Some(slack);
+        });
+        let blocked = state.rule_blocked && !gate.load(Ordering::Relaxed);
+        let state = service.update(|s| s.frontmost_app = None);
+        let reopened = !state.rule_blocked && gate.load(Ordering::Relaxed);
+        service.update(|s| {
+            s.settings.app_rule = AppRule::default();
+            s.rules_supported = false;
+        });
+        if !blocked || !reopened {
+            return Err(format!("blocked {blocked}, reopened {reopened}"));
+        }
+        Ok(((), "Slack in front silences, leaving it sounds again".into()))
+    });
+
+    report.check("service: retired pack selection moves to the default", || {
+        retired_selection(bundled, scratch, playback)
     });
 
     hot_reload_checks(report, &service, bundled, packs, &user_dir, scratch, playback);
@@ -519,6 +752,43 @@ fn service_checks(
         }
         Ok(((), format!("pack {}, humanize 0.5", saved.pack_id)))
     });
+}
+
+/// A settings file that selects a pack TakTak no longer bundles (an earlier default) starts on
+/// the default pack, silently (no `activePackError`), and the new selection is saved.
+fn retired_selection(
+    bundled: &Path,
+    scratch: &Path,
+    playback: bool,
+) -> Result<((), String), String> {
+    let retired = RETIRED_PACK_IDS[0];
+    let settings_path = scratch.join("retired").join(settings::FILE_NAME);
+    let config = Config {
+        version: "selftest".into(),
+        settings: Settings { pack_id: retired.into(), ..Settings::default() },
+        settings_path: settings_path.clone(),
+        bundled_dir: Some(bundled.to_path_buf()),
+        user_dir: Some(scratch.join("retired-user-packs")),
+        listen: false,
+    };
+    let started = Service::start(config, Box::new(|_, _| {})).map_err(|e| e.to_string())?;
+    let migrated = wait_for(WAIT, || {
+        started.settings().pack_id == DEFAULT_PACK_ID
+            && (!playback || started.now_playing().as_deref() == Some(DEFAULT_PACK_ID))
+    });
+    let (state, playing) = (started.snapshot(), started.now_playing());
+    started.shutdown(Duration::from_secs(3));
+    if !migrated || state.active_pack_error.is_some() {
+        return Err(format!(
+            "selected {:?}, playing {playing:?}, error {:?}",
+            state.settings.pack_id, state.active_pack_error
+        ));
+    }
+    let saved = settings::load(&settings_path).settings.pack_id;
+    if saved != DEFAULT_PACK_ID {
+        return Err(format!("saved {saved:?}"));
+    }
+    Ok(((), format!("{retired} → {saved}, no error, saved")))
 }
 
 /// A preview opens the output (closed: nothing else can play without a key listener), plays
@@ -727,8 +997,12 @@ mod tests {
     fn checks_that_need_no_device_pass() {
         let dir = tempfile::tempdir().unwrap();
         assert!(gate().is_ok());
+        assert_eq!(app_rules().err(), None);
+        assert_eq!(auto_mute().err(), None);
+        assert_eq!(onboarding().err(), None);
         assert!(persist(dir.path()).is_ok());
         assert!(recover(dir.path()).is_ok());
+        assert_eq!(migrate(dir.path()).err(), None);
         let repo_packs = catalog::bundled_dir(None).unwrap();
         let (packs, _) = scan(Some(&repo_packs)).unwrap();
         assert!(packs.iter().any(|p| p.id == DEFAULT_PACK_ID));

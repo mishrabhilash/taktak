@@ -113,7 +113,7 @@ FADE_OUT_MS = 8.0
 TARGET_PEAK_DB = -6.0
 CEILING_DB = -1.0
 # Playback level, written to pack.json as "volume"; it changes no audio file. It matches the
-# pack's typing loudness to the synthesized packs (REFERENCE_LK), so switching packs does not
+# pack's typing loudness to TakTak's reference typing level (REFERENCE_LK), so switching packs does not
 # jump in volume. Measured on the built pack with
 #     cargo run -p synth-packs --release -- loudness packs/spring-lite
 # (tools/synth-packs/src/loudness.rs): LK_AS_BUILT at volume 1.0. Recorded in SOURCES.md;
@@ -574,7 +574,7 @@ def write_sources(out_dir, digest, size, gain_db, info, files, preview_len):
         f"7. Loudness: `volume` in `pack.json` is **{VOLUME:.2f}** "
         f"({20 * math.log10(VOLUME):+.1f} dB), a playback gain the app applies to the whole "
         "pack, so no audio file changes. It matches typing loudness across the bundled packs, "
-        "so switching packs does not jump in volume; the reference is the synthesized packs' "
+        "so switching packs does not jump in volume; the target is TakTak's reference typing level, "
         f"{REFERENCE_LK:.1f} LK. Measured with `cargo run -p synth-packs --release -- loudness "
         f"packs/{PACK_ID}` (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R "
         "BS.1770) energy of the first 100 ms of the sample each alphanumeric key plays on "

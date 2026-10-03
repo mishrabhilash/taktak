@@ -1,11 +1,12 @@
 <script lang="ts">
-  // Problems that keep TakTak silent or degraded: permission, audio output, the active pack.
-  // `compact` is the tray popover's status lines: short text (full text on hover), same button.
-  import { openPermissionSettings } from '../lib/api';
+  // Problems that keep TakTak silent or degraded: auto-mute, permission, audio output, the
+  // active pack, per-app rules. `compact` is the tray popover's status lines: short text (full
+  // text on hover), same buttons.
+  import { openOnboarding, openPermissionSettings, relaunch, setMuted } from '../lib/api';
   import { plural } from '../lib/format';
   import { platform } from '../lib/platform';
-  import { grantLabel, notices } from '../lib/status';
-  import { run } from '../lib/store.svelte';
+  import { type Notice, type NoticeAction, actionLabel, notices } from '../lib/status';
+  import { run, set } from '../lib/store.svelte';
   import type { AppState } from '../lib/types';
   import Icon, { type IconName } from './Icon.svelte';
 
@@ -16,10 +17,14 @@
     limit?: number;
     /** Where the counted rest can be seen (e.g. opens Settings). */
     onmore?: () => void;
+    /** Notices this view explains itself (e.g. the Apps section and the rules notice). */
+    hide?: readonly Notice['id'][];
+    /** Shows the per-app rules; without it the rules notice has no button. */
+    onrules?: () => void;
   }
-  let { state, compact = false, limit = Infinity, onmore }: Props = $props();
+  let { state, compact = false, limit = Infinity, onmore, hide = [], onrules }: Props = $props();
 
-  const all = $derived(notices(state, platform));
+  const all = $derived(notices(state, platform).filter((n) => !hide.includes(n.id)));
   const list = $derived(all.slice(0, limit));
   const hidden = $derived(all.length - list.length);
   const ICON: Record<'info' | 'warning' | 'error', IconName> = {
@@ -27,6 +32,30 @@
     warning: 'warning',
     error: 'error',
   };
+
+  function available(actions: NoticeAction[]): NoticeAction[] {
+    return actions.filter((a) => a !== 'rules' || onrules);
+  }
+
+  function act(action: NoticeAction): void {
+    switch (action) {
+      case 'permission':
+        void run(openPermissionSettings());
+        break;
+      case 'guide':
+        void run(openOnboarding());
+        break;
+      case 'relaunch':
+        void run(relaunch());
+        break;
+      case 'unmute':
+        void set('muted', false, setMuted);
+        break;
+      case 'rules':
+        onrules?.();
+        break;
+    }
+  }
 </script>
 
 {#if list.length > 0}
@@ -41,14 +70,19 @@
             <p class="notice-title">{notice.title}</p>
             <p class="notice-message selectable">{notice.message}</p>
           {/if}
-          {#if notice.permissionAction}
-            <button
-              type="button"
-              class="btn primary small"
-              onclick={() => run(openPermissionSettings())}
-            >
-              {grantLabel(platform)}
-            </button>
+          {#if available(notice.actions).length > 0}
+            <div class="notice-actions">
+              {#each available(notice.actions) as action, i (action)}
+                <button
+                  type="button"
+                  class="btn small"
+                  class:primary={i === 0}
+                  onclick={() => act(action)}
+                >
+                  {actionLabel(action, platform)}
+                </button>
+              {/each}
+            </div>
           {/if}
         </div>
       </div>
@@ -146,7 +180,10 @@
     overflow-wrap: anywhere;
   }
 
-  .btn {
+  .notice-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
     margin-top: 8px;
   }
 
@@ -166,7 +203,7 @@
     background: var(--hover);
   }
 
-  .compact .btn {
+  .compact .notice-actions {
     margin-top: 6px;
   }
 </style>

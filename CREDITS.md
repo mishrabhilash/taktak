@@ -9,8 +9,7 @@ The `attribution` field of each pack's `pack.json` holds its credit line, for di
 pack.
 
 All licenses below were checked on 2026-10-02. Every pack can be rebuilt from the original
-downloads with the scripts in [`tools/pack-sources/`](tools/pack-sources/) (or, for the
-synthesized packs, [`tools/synth-packs/`](tools/synth-packs/)).
+downloads with the scripts in [`tools/pack-sources/`](tools/pack-sources/).
 
 The original authors do not endorse TakTak or its packs. Product names that appear below in
 the titles and descriptions of the original recordings (IBM, Keychron, Corsair, Cherry and
@@ -26,22 +25,11 @@ all packs play at about the same loudness (see "Loudness" in each `SOURCES.md`),
 includes a short `preview.wav` mixed from its own sounds. Pack-specific changes are listed per
 pack.
 
-## Synthesized packs (TakTak's own work)
-
-| Pack | id | License |
-|---|---|---|
-| Deep Thock | `deep-thock` | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| Crisp Clack | `crisp-clack` | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-| Blue Click | `blue-click` | [CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/) |
-
-These three packs are procedurally synthesized by TakTak's own generator,
-[`tools/synth-packs`](tools/synth-packs/), from physical models. No recordings or other
-third-party audio were used at any stage. The TakTak contributors dedicate them to the public
-domain under CC0 1.0; no credit is required. Provenance and the generator seeds:
-[deep-thock](packs/deep-thock/SOURCES.md), [crisp-clack](packs/crisp-clack/SOURCES.md),
-[blue-click](packs/blue-click/SOURCES.md).
-
 ## Recorded packs
+
+Every bundled pack is made from recordings. (Earlier versions also shipped three synthesized
+packs; they are no longer bundled, and their experimental generator,
+[`tools/synth-packs/`](tools/synth-packs/), does not write into `packs/`.)
 
 ### Buckling Spring (`buckling-spring`)
 

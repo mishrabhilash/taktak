@@ -79,8 +79,8 @@ SPACE_MAX_PEAK_DB = -1.0
 # Playback level, written to pack.json as "volume"; it changes no audio file. Measured on the
 # built pack with
 #     cargo run -p synth-packs --release -- loudness packs/linear-red
-# (tools/synth-packs/src/loudness.rs): typing reads -26.6 LK at volume 1.0, so matching the
-# synthesized packs' -25.8 LK would take 1.10. But the loudest file (a space press, true peak
+# (tools/synth-packs/src/loudness.rs): typing reads -26.6 LK at volume 1.0, so matching
+# TakTak's reference typing level (-25.8 LK) would take 1.10. But the loudest file (a space press, true peak
 # -1.0 dBFS) must stay at or below -1 dBFS at the top of the +6% volume variation, as the
 # mixer clips hard at 0 dBFS, which allows at most 0.94: typing ends at -27.1 LK, 1.3 dB
 # below the reference. Recorded in SOURCES.md; re-measure whenever the processing changes.

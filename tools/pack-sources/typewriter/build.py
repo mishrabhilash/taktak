@@ -209,7 +209,7 @@ VARIATION = {"pitch": 0.015, "volume": 0.06}
 # built pack with
 #     cargo run -p synth-packs --release -- loudness packs/typewriter
 # (tools/synth-packs/src/loudness.rs): typing reads LK_AS_BUILT at volume 1.0, and matching
-# the synthesized packs' REFERENCE_LK would take VOLUME_FOR_REFERENCE. The loudest file's true
+# TakTak's reference typing level (REFERENCE_LK) would take VOLUME_FOR_REFERENCE. The loudest file's true
 # peak (TRUE_PEAK_DBFS, 4x oversampled) must stay at or below MAX_TRUE_PEAK_DBFS at the top of
 # the volume variation, as the mixer clips hard at 0 dBFS, which allows VOLUME: typing ends
 # 0.4 dB below the reference, within the 0.5 dB tolerance. Recorded in SOURCES.md; re-measure
@@ -1065,7 +1065,7 @@ def write_sources_md(out: str, manifest: dict, derivation, gains, counts, previe
         f"`volume` in `pack.json` is {VOLUME:.2f} ({float(db(VOLUME)):+.1f} dB): a playback gain "
         "the app applies to the whole pack, so no audio file changes. Typing loudness is "
         "matched across the bundled packs so that switching packs does not jump in volume; the "
-        f"reference is the synthesized packs' {REFERENCE_LK:.1f} LK. Measured with "
+        f"target is TakTak's reference typing level, {REFERENCE_LK:.1f} LK. Measured with "
         "`cargo run -p synth-packs --release -- loudness packs/typewriter` "
         "(`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the "
         "first 100 ms of the sample each alphanumeric key plays on press by default, "

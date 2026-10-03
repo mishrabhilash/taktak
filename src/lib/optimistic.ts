@@ -6,6 +6,7 @@
 //
 // Plain TypeScript (no runes) so it can be unit-tested; `store.svelte.ts` makes it reactive.
 
+import { ruleBlocks } from './rules';
 import type { AppState, Settings } from './types';
 
 /** The fields a control can change optimistically. */
@@ -18,6 +19,8 @@ export type OptimisticKey =
   | 'variantMode'
   | 'humanize'
   | 'launchAtLogin'
+  | 'muteOnOutputChange'
+  | 'appRule'
   | 'muted';
 
 export type OptimisticValue<K extends OptimisticKey> = K extends keyof Settings
@@ -44,10 +47,18 @@ export function fieldOf(state: AppState, key: OptimisticKey): unknown {
 
 function same(a: unknown, b: unknown): boolean {
   if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 1e-9;
+  // `appRule`: small plain data, compared by value.
+  if (typeof a === 'object' && a !== null && typeof b === 'object' && b !== null) {
+    return JSON.stringify(a) === JSON.stringify(b);
+  }
   return a === b;
 }
 
-/** `state` with `values` applied; `playing` follows an overridden `enabled` or `muted`. */
+/**
+ * `state` with `values` applied, and what follows from them like the app computes it: any mute
+ * change, turning sounds on and turning `muteOnOutputChange` off clear an "outputChanged"
+ * auto-mute; a rule edit re-evaluates `ruleBlocked`; `playing` follows.
+ */
 export function withValues(
   state: AppState,
   values: ReadonlyMap<OptimisticKey, unknown>,
@@ -60,10 +71,28 @@ export function withValues(
     else settings[key] = value;
   }
   const next: AppState = { ...state, settings: settings as unknown as Settings, muted };
-  if (values.has('enabled') || values.has('muted')) {
+  if (
+    state.autoMute === 'outputChanged' &&
+    (values.has('muted') ||
+      values.get('enabled') === true ||
+      values.get('muteOnOutputChange') === false)
+  ) {
+    next.autoMute = null;
+  }
+  if (values.has('appRule')) {
+    next.ruleBlocked = ruleBlocks(next.settings.appRule, state.frontmostApp, state.rulesSupported);
+  }
+  if (
+    values.has('enabled') ||
+    values.has('muted') ||
+    values.has('appRule') ||
+    values.has('muteOnOutputChange')
+  ) {
     next.playing =
       next.settings.enabled &&
       !muted &&
+      next.autoMute === null &&
+      !next.ruleBlocked &&
       state.permission === 'granted' &&
       state.audio.state === 'ok';
   }

@@ -2,10 +2,11 @@
   import { isTauri, windowLabel } from './lib/api';
   import { watchKeyboardLayout } from './lib/keyboard.svelte';
   import { connect } from './lib/store.svelte';
+  import OnboardingView from './views/OnboardingView.svelte';
   import SettingsView from './views/SettingsView.svelte';
   import TrayView from './views/TrayView.svelte';
 
-  // Both windows load this bundle; the label decides the view (docs/ui-contract.md).
+  // Every window loads this bundle; the label decides the view (docs/ui-contract.md).
   const label = windowLabel();
   void connect();
   // Labels shortcut keys with the layout's characters where the webview can tell (macOS).
@@ -24,6 +25,8 @@
 
 {#if label === 'tray'}
   <TrayView />
+{:else if label === 'onboarding'}
+  <OnboardingView />
 {:else}
   <SettingsView />
 {/if}

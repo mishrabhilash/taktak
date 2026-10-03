@@ -22,10 +22,11 @@ const AUTHOR: &str = "TakTak contributors";
 const LICENSE: &str = "CC0-1.0";
 const VERSION: &str = "1.0.0";
 const PREVIEW: &str = "preview.wav";
-/// The provenance record the bundled-pack rules require (docs/pack-format.md).
+/// The provenance record the bundled-pack rules require (docs/pack-format.md), kept so a
+/// generated pack would meet them if it were ever bundled.
 const SOURCES_MD: &str = "SOURCES.md";
 const GENERATOR: &str = concat!("synth-packs ", env!("CARGO_PKG_VERSION"));
-const REGENERATE: &str = "cargo run -p synth-packs --release -- --out packs";
+const REGENERATE: &str = "cargo run -p synth-packs --release -- --out target/synth-packs";
 const LICENSE_URL: &str = "https://creativecommons.org/publicdomain/zero/1.0/";
 /// The preview is decoded like any other sample, so it must stay under the 2 s sample limit.
 const PREVIEW_MAX_MS: f64 = 1950.0;

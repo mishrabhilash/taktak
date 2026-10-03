@@ -1,4 +1,4 @@
-//! The three bundled packs as synthesis parameters. Values come from the calibrated table in
+//! The three experimental (not bundled) packs as synthesis parameters. Values come from the calibrated table in
 //! the M2 acoustics research (keyboard-acoustics.md §6): mode lists are Hz : gain (τ ms),
 //! gains are linear amplitudes for a unit-area excitation.
 

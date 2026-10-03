@@ -1,8 +1,8 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "The tray popover and settings window: listen to app events, nothing else. No fs, shell, http, emit, window control or plugin access; the app's own commands (hide_tray included) need no grant.",
-  "windows": ["tray", "settings"],
+  "description": "The tray popover, settings and onboarding windows: listen to app events, nothing else. No fs, shell, http, emit, window control or plugin access; the app's own commands (hide_tray included) need no grant.",
+  "windows": ["tray", "settings", "onboarding"],
   "permissions": [
     "core:event:allow-listen",
     "core:event:allow-unlisten"

@@ -90,8 +90,8 @@ The build needs ffmpeg and numpy; it was run with ffmpeg 9.0.2, numpy 2.4.2 and 
    80–200 ms gaps (fixed random seed). Enter uses a letter release, as the runtime does.
 6. **Loudness.** `volume` in `pack.json` is **1.14** (+1.1 dB): a playback gain the app
    applies to the whole pack, so no audio file changes. It matches typing loudness across the
-   bundled packs, so switching packs does not jump in volume; the reference is the
-   synthesized packs' −25.8 LK. Measured with
+   bundled packs, so switching packs does not jump in volume; the target is TakTak's
+   reference typing level, −25.8 LK. Measured with
    `cargo run -p synth-packs --release -- loudness packs/key-press`
    (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first
    100 ms of the sample each alphanumeric key plays on press by default, power-averaged over

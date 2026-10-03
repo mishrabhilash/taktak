@@ -38,7 +38,7 @@ SR = 48_000
 PRE_ROLL = 24  # 0.5 ms
 TARGET_MEDIAN_PRESS_PEAK_DB = -6.0
 # Playback level, written to pack.json as "volume"; it changes no audio file. It matches the
-# pack's typing loudness to the synthesized packs' -25.8 LK, so switching packs does not jump
+# pack's typing loudness to TakTak's reference typing level, -25.8 LK, so switching packs does not jump
 # in volume. Measured on the built pack with
 #     cargo run -p synth-packs --release -- loudness packs/key-press
 # (tools/synth-packs/src/loudness.rs): -26.8 LK at volume 1.0, -25.7 LK at VOLUME. Recorded

@@ -28,7 +28,7 @@ Every sound in this pack comes from one source, rebuilt by `tools/pack-sources/b
 
 ## Loudness
 
-`volume` in `pack.json` is 0.96 (-0.4 dB): a playback gain the app applies to the whole pack, so no audio file changes. It matches typing loudness across the bundled packs, so switching packs does not jump in volume; the reference is the synthesized packs' -25.8 LK. Measured with `cargo run -p synth-packs --release -- loudness packs/buckling-spring` (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first 100 ms of the sample each alphanumeric key plays on press by default, power-averaged over the keys, on the samples as the app loads them at 48 kHz. This pack reads -25.5 LK as built and -25.8 LK at this volume. The loudest true peak at the top of the volume variation becomes -1.48 dBFS. `build.py` writes the volume (`VOLUME`), so a rebuild keeps it.
+`volume` in `pack.json` is 0.96 (-0.4 dB): a playback gain the app applies to the whole pack, so no audio file changes. It matches typing loudness across the bundled packs, so switching packs does not jump in volume; the target is TakTak's reference typing level, -25.8 LK. Measured with `cargo run -p synth-packs --release -- loudness packs/buckling-spring` (`tools/synth-packs/src/loudness.rs`): the K-weighted (ITU-R BS.1770) energy of the first 100 ms of the sample each alphanumeric key plays on press by default, power-averaged over the keys, on the samples as the app loads them at 48 kHz. This pack reads -25.5 LK as built and -25.8 LK at this volume. The loudest true peak at the top of the volume variation becomes -1.48 dBFS. `build.py` writes the volume (`VOLUME`), so a rebuild keeps it.
 
 ## Source clipping
 

@@ -1,19 +1,32 @@
 // In-browser stand-in for the Rust app, used automatically outside Tauri (`npm run dev`).
-// It lists the 12 bundled packs from packs/*/pack.json, applies every command to an in-memory
+// It lists the 9 bundled packs from packs/*/pack.json, applies every command to an in-memory
 // AppState, emits `state-changed` like the app does, and plays pack previews from the dev
 // server. Nothing is persisted.
 //
 // Scenarios, combinable: ?scenario=denied,fault,invalid,empty
-//   denied   Input Monitoring not granted (granted 2 s after "open permission settings")
-//   fault    audio device fault that recovers after 4 s
-//   invalid  a user pack with a warning, a broken user pack (selected, failed, so Deep Thock
-//            plays instead) and an invalid one
-//   empty    no packs at all (the built-in click plays)
-// Pick the view with ?window=tray or ?window=settings (default).
+//   denied        Input Monitoring not granted (granted 2 s after "open permission settings")
+//   fault         audio device fault that recovers after 4 s
+//   invalid       a user pack with a warning, a broken user pack (selected, failed, so
+//                 Buckling Spring plays instead) and an invalid one
+//   empty         no packs at all (the built-in click plays)
+// Milestone 4:
+//   firstrun      a fresh install: the onboarding is not done yet (by default the mock is a
+//                 returning user)
+//   relaunch      macOS reports Input Monitoring as granted but the listener is refused:
+//                 relaunchSuggested; the `relaunch` command fixes it after 1.5 s
+//   rules         mode "never" listing Slack and zoom.us, with Slack in front (silent)
+//   switching     the frontmost app changes every 3 s
+//   locked        the screen is locked (auto-muted) and unlocks after 4 s
+//   outputchange  "mute when the output changes" is on; 3 s in, the output moves to AirPods Pro
+//   unsupported   no per-app rules and no permission step (like Windows and Linux)
+// Pick the view with ?window=tray, ?window=onboarding or ?window=settings (default).
 
 import { version } from '../../package.json';
 import type { Backend } from './api';
+import { ruleAppProblem, ruleBlocks, withApp, withoutApp } from './rules';
 import type {
+  AppInfo,
+  AppRef,
   AppState,
   Command,
   CommandArgs,
@@ -47,7 +60,7 @@ const manifests = import.meta.glob<Manifest>('../../packs/*/pack.json', {
 
 const DEFAULT_SETTINGS: Settings = {
   enabled: true,
-  packId: 'deep-thock',
+  packId: 'buckling-spring',
   masterVolume: 0.7,
   pressVolume: 1,
   releaseVolume: 1,
@@ -55,7 +68,77 @@ const DEFAULT_SETTINGS: Settings = {
   humanize: 0.25,
   muteHotkey: 'CommandOrControl+Alt+Shift+M',
   launchAtLogin: false,
+  appRule: { mode: 'everywhere', apps: [] },
+  muteOnOutputChange: false,
+  onboardingDone: false,
 };
+
+/** The most ids one `get_app_icons` call answers. */
+const MAX_ICON_IDS = 200;
+
+const UNSUPPORTED = 'Per-app rules aren’t available on this system yet.';
+
+interface FakeApp extends AppRef {
+  /** Icon background; null = the app has no icon. */
+  color: string | null;
+}
+
+/** What list_running_apps reports (already sorted by name, like the app). */
+const RUNNING: FakeApp[] = [
+  { id: 'com.apple.finder', name: 'Finder', color: '#1e88e5' },
+  { id: 'com.google.Chrome', name: 'Google Chrome', color: '#34a853' },
+  { id: 'net.kovidgoyal.kitty', name: 'kitty', color: null },
+  { id: 'com.apple.Notes', name: 'Notes', color: '#f9c600' },
+  { id: 'com.apple.Safari', name: 'Safari', color: '#0a84ff' },
+  { id: 'com.tinyspeck.slackmacgap', name: 'Slack', color: '#4a154b' },
+  { id: 'com.apple.Terminal', name: 'Terminal', color: '#2b2b2b' },
+  { id: 'com.microsoft.VSCode', name: 'Visual Studio Code', color: '#007acc' },
+  { id: 'com.apple.dt.Xcode', name: 'Xcode', color: '#147efb' },
+  { id: 'us.zoom.xos', name: 'zoom.us', color: '#2d8cff' },
+];
+
+/** What choose_app returns, in turn (null = the user cancelled). */
+const CHOOSABLE: (FakeApp | null)[] = [
+  { id: 'com.microsoft.Word', name: 'Microsoft Word', color: '#2b579a' },
+  { id: 'com.hnc.Discord', name: 'Discord', color: '#5865f2' },
+  { id: 'md.obsidian', name: 'Obsidian', color: '#7c3aed' },
+  null,
+];
+
+/** The apps that take turns in front with ?scenario=switching. */
+const SWITCHING = [
+  'com.microsoft.VSCode',
+  'com.tinyspeck.slackmacgap',
+  'com.apple.Safari',
+  'com.apple.Terminal',
+  'us.zoom.xos',
+];
+
+const KNOWN_APPS = [...RUNNING, ...CHOOSABLE.filter((a): a is FakeApp => a !== null)];
+
+function fakeApp(id: string): FakeApp {
+  const app = KNOWN_APPS.find((a) => a.id === id);
+  if (!app) throw new Error(`no fake app ${id}`);
+  return app;
+}
+
+const ref = ({ id, name }: AppRef): AppRef => ({ id, name });
+
+/** A 32 × 32 rounded tile with the app's initial, as a data: URL (the app sends PNGs). */
+function fakeIcon(app: FakeApp): string | null {
+  if (app.color === null) return null;
+  const svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">' +
+    `<rect x="2" y="2" width="28" height="28" rx="7" fill="${app.color}"/>` +
+    '<text x="16" y="21.5" font-family="-apple-system, Helvetica, sans-serif" font-size="15" ' +
+    `font-weight="600" text-anchor="middle" fill="#fff">${app.name.charAt(0).toUpperCase()}</text>` +
+    '</svg>';
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+}
+
+function appInfo(app: FakeApp): AppInfo {
+  return { id: app.id, name: app.name, iconDataUrl: fakeIcon(app) };
+}
 
 const MODIFIERS = new Set([
   'commandorcontrol',
@@ -104,7 +187,7 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 function initialState(scenarios: Set<string>): AppState {
   const state: AppState = {
     version,
-    settings: { ...DEFAULT_SETTINGS },
+    settings: structuredClone(DEFAULT_SETTINGS),
     muted: false,
     playing: false,
     packs: Object.values(manifests).map(summary).sort(byName),
@@ -121,8 +204,32 @@ function initialState(scenarios: Set<string>): AppState {
       state: 'ok',
       message: null,
     },
+    frontmostApp: ref(fakeApp('com.microsoft.VSCode')),
+    ruleBlocked: false,
+    autoMute: null,
+    rulesSupported: true,
+    onboarding: { offer: false, permissionRequired: true, relaunchSuggested: false },
   };
+  // A returning user, unless ?scenario=firstrun.
+  state.settings.onboardingDone = !scenarios.has('firstrun');
   if (scenarios.has('denied')) state.permission = 'denied';
+  if (scenarios.has('relaunch')) {
+    state.permission = 'denied';
+    state.onboarding.relaunchSuggested = true;
+  }
+  if (scenarios.has('rules')) {
+    state.settings.appRule = {
+      mode: 'never',
+      apps: [ref(fakeApp('com.tinyspeck.slackmacgap')), ref(fakeApp('us.zoom.xos'))],
+    };
+    state.frontmostApp = ref(fakeApp('com.tinyspeck.slackmacgap'));
+  }
+  if (scenarios.has('outputchange')) state.settings.muteOnOutputChange = true;
+  if (scenarios.has('unsupported')) {
+    state.rulesSupported = false;
+    state.frontmostApp = null;
+    state.onboarding.permissionRequired = false;
+  }
   if (scenarios.has('fault')) {
     state.audio = {
       device: null,
@@ -183,8 +290,8 @@ function initialState(scenarios: Set<string>): AppState {
 const BROKEN = 'half-done';
 
 /**
- * What the app's loader ends up with for the selected pack: the pack itself, else Deep Thock,
- * else any pack, else the built-in click, with `activePackError` saying why (catalog.rs).
+ * What the app's loader ends up with for the selected pack: the pack itself, else Buckling
+ * Spring (the default), else any pack, else the built-in click, with `activePackError` saying why (catalog.rs).
  */
 function loadSelected(s: AppState): void {
   const selected = s.settings.packId;
@@ -224,11 +331,26 @@ export function createMockBackend(
   const listeners = new Set<(state: AppState) => void>();
   let audio: HTMLAudioElement | null = null;
   const openedAt = performance.now();
+  /** The two auto-mute reasons, tracked apart like the app does; `autoMute` shows the stronger. */
+  const autoMute = { screenLocked: scenarios.has('locked'), outputChanged: false };
+  let chosen = 0;
 
+  /** The derived fields, as the app computes them (docs/ui-contract.md). */
   function snapshot(): AppState {
+    state.autoMute = autoMute.screenLocked
+      ? 'screenLocked'
+      : autoMute.outputChanged
+        ? 'outputChanged'
+        : null;
+    state.ruleBlocked = ruleBlocks(state.settings.appRule, state.frontmostApp, state.rulesSupported);
+    state.onboarding.offer =
+      !state.settings.onboardingDone ||
+      (state.onboarding.permissionRequired && state.permission === 'denied');
     state.playing =
       state.settings.enabled &&
       !state.muted &&
+      state.autoMute === null &&
+      !state.ruleBlocked &&
       state.permission === 'granted' &&
       state.audio.state === 'ok';
     return structuredClone(state);
@@ -257,6 +379,43 @@ export function createMockBackend(
       };
       emit();
     });
+  }
+
+  if (autoMute.screenLocked) {
+    void wait(4000).then(() => {
+      autoMute.screenLocked = false;
+      emit();
+    });
+  }
+
+  if (scenarios.has('outputchange')) {
+    void wait(3000).then(() => {
+      state.audio = {
+        device: 'AirPods Pro',
+        sampleRate: 48000,
+        bufferFrames: 64,
+        state: 'ok',
+        message: null,
+      };
+      // Only while sounds are on and not muted by hand, like the app.
+      if (state.settings.muteOnOutputChange && state.settings.enabled && !state.muted) {
+        autoMute.outputChanged = true;
+      }
+      emit();
+    });
+  }
+
+  if (scenarios.has('switching') && state.rulesSupported) {
+    let turn = 0;
+    const next = (): void => {
+      void wait(3000).then(() => {
+        turn = (turn + 1) % SWITCHING.length;
+        state.frontmostApp = ref(fakeApp(SWITCHING[turn] ?? 'com.microsoft.VSCode'));
+        emit();
+        next();
+      });
+    };
+    next();
   }
 
   function latency(): LatencyReport | null {
@@ -290,8 +449,16 @@ export function createMockBackend(
 
   const handlers: { [C in Command]: (args: Commands[C]['args']) => Commands[C]['result'] } = {
     get_state: () => snapshot(),
-    set_enabled: ({ enabled }) => change((s) => (s.settings.enabled = enabled)),
-    set_muted: ({ muted }) => change((s) => (s.muted = muted)),
+    set_enabled: ({ enabled }) =>
+      change((s) => {
+        s.settings.enabled = enabled;
+        if (enabled) autoMute.outputChanged = false;
+      }),
+    set_muted: ({ muted }) =>
+      change((s) => {
+        s.muted = muted;
+        autoMute.outputChanged = false;
+      }),
     set_pack: ({ id }) => {
       if (!state.packs.some((p) => p.id === id)) throw `There is no pack “${id}”.`;
       const result = change((s) => {
@@ -328,12 +495,65 @@ export function createMockBackend(
     open_user_packs_dir: () => console.info(`[mock] reveal ${state.userPacksDir}`),
     open_permission_settings: () => {
       console.info('[mock] open Privacy & Security → Input Monitoring');
-      if (state.permission !== 'granted') {
+      // With ?scenario=relaunch the listener stays refused until `relaunch`.
+      if (state.permission !== 'granted' && !state.onboarding.relaunchSuggested) {
         void wait(2000).then(() => change((s) => (s.permission = 'granted')));
       }
     },
     get_latency: () => latency(),
     quit: () => console.info('[mock] quit'),
+    list_running_apps: () => (state.rulesSupported ? RUNNING.map(appInfo) : []),
+    choose_app: () => {
+      if (!state.rulesSupported) throw UNSUPPORTED;
+      const app = CHOOSABLE[chosen % CHOOSABLE.length] ?? null;
+      chosen += 1;
+      return app ? appInfo(app) : null;
+    },
+    get_app_icons: ({ ids }) =>
+      Object.fromEntries(
+        ids.slice(0, MAX_ICON_IDS).map((id) => {
+          const app = state.rulesSupported ? KNOWN_APPS.find((a) => a.id === id) : undefined;
+          return [id, app ? fakeIcon(app) : null];
+        }),
+      ),
+    set_app_rule_mode: ({ mode }) => change((s) => (s.settings.appRule.mode = mode)),
+    add_rule_app: ({ id, name }) => {
+      // The app's checks and storage rules (rules.ts mirrors them for the UI).
+      const rule = state.settings.appRule;
+      const problem = ruleAppProblem(rule, id);
+      if (problem) throw problem;
+      const next = withApp(rule, { id, name });
+      if (next === rule) return snapshot();
+      return change((s) => (s.settings.appRule = next));
+    },
+    remove_rule_app: ({ id }) => {
+      const rule = state.settings.appRule;
+      const next = withoutApp(rule, id);
+      if (next === rule) return snapshot();
+      return change((s) => (s.settings.appRule = next));
+    },
+    set_mute_on_output_change: ({ enabled }) =>
+      change((s) => {
+        s.settings.muteOnOutputChange = enabled;
+        if (!enabled) autoMute.outputChanged = false;
+      }),
+    open_onboarding: () => console.info('[mock] open the onboarding window (?window=onboarding)'),
+    finish_onboarding: () => {
+      console.info('[mock] close the onboarding window');
+      return change((s) => (s.settings.onboardingDone = true));
+    },
+    relaunch: () => {
+      console.info('[mock] relaunch');
+      if (state.onboarding.relaunchSuggested) {
+        // As if the new instance were up: it can listen now.
+        void wait(1500).then(() =>
+          change((s) => {
+            s.permission = 'granted';
+            s.onboarding.relaunchSuggested = false;
+          }),
+        );
+      }
+    },
   };
 
   return {

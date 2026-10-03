@@ -1,6 +1,7 @@
 <script lang="ts">
-  // The popover under the tray icon: on/off, mute, volume, pack choice, and what is wrong if
-  // nothing plays. Escape hides it (it also hides when it loses focus).
+  // The popover under the tray icon: on/off, mute, volume, pack choice, and why nothing plays
+  // (auto-mute, permission, audio, per-app rules). Escape hides it (it also hides when it loses
+  // focus).
   import Icon from '../components/Icon.svelte';
   import Keycaps from '../components/Keycaps.svelte';
   import Logo from '../components/Logo.svelte';
@@ -19,13 +20,21 @@
     setPack,
   } from '../lib/api';
   import { platform } from '../lib/platform';
-  import { playbackStatus, playingName } from '../lib/status';
+  import { requestSection } from '../lib/section';
+  import { effectiveMuted, playbackStatus, playingName } from '../lib/status';
   import { app, levelControl, run, set } from '../lib/store.svelte';
 
   const master = levelControl('masterVolume', setMasterVolume);
 
   const s = $derived(app.state);
   const status = $derived(s ? playbackStatus(s, platform) : null);
+  // The switch shows the manual mute or an "outputChanged" auto-mute, like the tray menu's Mute.
+  const muted = $derived(s ? effectiveMuted(s) : false);
+
+  function editRules(): void {
+    requestSection('apps');
+    void run(openSettings());
+  }
 
   let list: HTMLElement | undefined = $state();
   // Only the id: the effect below must not rerun on every state change (a volume drag).
@@ -61,7 +70,7 @@
     <div class="title">
       <h1>TakTak</h1>
       {#if s && status}
-        <p class="status {status.tone}" aria-live="polite">
+        <p class="status {status.tone}" aria-live="polite" title={status.label}>
           <span class="dot" aria-hidden="true"></span>
           <span class="status-text">
             {status.label}
@@ -84,7 +93,13 @@
 
   {#if s}
     <div class="body">
-      <Notices state={s} compact limit={1} onmore={() => run(openSettings())} />
+      <Notices
+        state={s}
+        compact
+        limit={1}
+        onmore={() => run(openSettings())}
+        onrules={editRules}
+      />
 
       <div class="controls">
         <div class="control">
@@ -98,8 +113,8 @@
           />
         </div>
         <div class="control">
-          <span class="control-icon" class:muted={s.muted}>
-            <Icon name={s.muted ? 'mute' : 'speaker'} />
+          <span class="control-icon" class:muted>
+            <Icon name={muted ? 'mute' : 'speaker'} />
           </span>
           <span class="control-label" id="tray-mute-label">Mute</span>
           {#if s.settings.muteHotkey}
@@ -108,7 +123,7 @@
           <Switch
             small
             labelledby="tray-mute-label"
-            checked={s.muted}
+            checked={muted}
             onchange={(v) => set('muted', v, setMuted)}
           />
         </div>

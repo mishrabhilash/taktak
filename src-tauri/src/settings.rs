@@ -3,8 +3,16 @@
 //! A missing file means defaults. A file that is not a JSON object is moved aside to
 //! `settings.json.corrupt` and defaults are used. A field with the wrong type falls back to its
 //! default on its own, keeping the others; levels are clamped into `0..=1`.
+//!
+//! Migration (`docs/ui-contract.md` § Settings migration): a file without `onboardingDone` was
+//! written by an earlier version, so its user has run TakTak before and the field reads as
+//! `true`. Leniency reaches into `appRule`: a bad `mode` or `apps` resets alone, and a bad entry
+//! is dropped without losing the others. A `packId` naming a pack TakTak no longer bundles is
+//! kept here and moved to the default pack by the service once it knows the installed packs
+//! (`catalog::migrate_retired`), so a user pack of that id keeps the selection.
 
-use crate::state::{DEFAULT_PACK_ID, Settings};
+use crate::rules;
+use crate::state::{AppRule, AppRuleEntry, AppRuleMode, DEFAULT_PACK_ID, MAX_RULE_APPS, Settings};
 use serde_json::{Map, Value};
 use std::fs;
 use std::io::{self, Write};
@@ -32,7 +40,8 @@ pub fn master_gain(slider: f64) -> f32 {
     (s * s) as f32
 }
 
-/// `settings` with every level in `0..=1`, a non-empty pack id and no empty hotkey.
+/// `settings` with every level in `0..=1`, a non-empty pack id, no empty hotkey and a clean
+/// rule list ([`rules::sanitize`]).
 pub fn sanitize(mut settings: Settings) -> Settings {
     settings.master_volume = unit(settings.master_volume);
     settings.press_volume = unit(settings.press_volume);
@@ -43,6 +52,7 @@ pub fn sanitize(mut settings: Settings) -> Settings {
     if settings.mute_hotkey.as_deref().is_some_and(|h| h.trim().is_empty()) {
         settings.mute_hotkey = None;
     }
+    settings.app_rule = rules::sanitize(settings.app_rule);
     settings
 }
 
@@ -70,7 +80,11 @@ pub fn load(path: &Path) -> Loaded {
     };
     match serde_json::from_slice::<Value>(&bytes) {
         Ok(Value::Object(fields)) => {
-            let (settings, rejected) = lenient(fields);
+            let migrated = !fields.contains_key(ONBOARDING_DONE);
+            let (mut settings, rejected) = lenient(fields);
+            if migrated {
+                settings.onboarding_done = true;
+            }
             let note = (!rejected.is_empty()).then(|| {
                 let fields = rejected.join(", ");
                 format!("{}: reset invalid field(s) to defaults: {fields}", path.display())
@@ -116,6 +130,14 @@ fn lenient(fields: Map<String, Value>) -> (Settings, Vec<String>) {
         if !defaults.contains_key(&key) {
             continue;
         }
+        if key == APP_RULE {
+            let (rule, problems) = lenient_app_rule(&value);
+            rejected.extend(problems);
+            if let Ok(value) = serde_json::to_value(rule) {
+                merged.insert(key, value);
+            }
+            continue;
+        }
         let mut probe = defaults.clone();
         probe.insert(key.clone(), value.clone());
         if serde_json::from_value::<Settings>(Value::Object(probe)).is_ok() {
@@ -126,6 +148,66 @@ fn lenient(fields: Map<String, Value>) -> (Settings, Vec<String>) {
     }
     let settings = serde_json::from_value(Value::Object(merged)).unwrap_or_default();
     (sanitize(settings), rejected)
+}
+
+/// The `onboardingDone` field's name in the file.
+const ONBOARDING_DONE: &str = "onboardingDone";
+/// The `appRule` field's name in the file.
+const APP_RULE: &str = "appRule";
+
+/// Reads `appRule` leniently: a wrong-typed `mode` becomes "everywhere" and keeps the list; a
+/// wrong-typed `apps` becomes empty; an entry that is not an object with a non-empty string `id`
+/// is dropped, the others kept; a missing, wrong-typed or empty `name` becomes the id; entries
+/// past the 200th are dropped. Unknown fields are ignored. Returns the rule (sanitized: ids
+/// trimmed, later duplicates dropped) and what had to be reset or dropped, for the log.
+fn lenient_app_rule(value: &Value) -> (AppRule, Vec<String>) {
+    let Value::Object(fields) = value else {
+        return (AppRule::default(), vec![APP_RULE.to_owned()]);
+    };
+    let mut problems = Vec::new();
+    let mode = match fields.get("mode") {
+        None => AppRuleMode::default(),
+        Some(mode) => serde_json::from_value(mode.clone()).unwrap_or_else(|_| {
+            problems.push(format!("{APP_RULE}.mode"));
+            AppRuleMode::default()
+        }),
+    };
+    let apps = match fields.get("apps") {
+        None => Vec::new(),
+        Some(Value::Array(entries)) => {
+            let apps: Vec<AppRuleEntry> = entries.iter().filter_map(lenient_rule_entry).collect();
+            let invalid = entries.len() - apps.len();
+            if invalid > 0 {
+                problems.push(format!("{APP_RULE}.apps ({invalid} invalid entries dropped)"));
+            }
+            apps
+        }
+        Some(_) => {
+            problems.push(format!("{APP_RULE}.apps"));
+            Vec::new()
+        }
+    };
+    let valid = apps.len();
+    let rule = rules::sanitize(AppRule { mode, apps });
+    let extra = valid - rule.apps.len();
+    if extra > 0 {
+        problems.push(format!(
+            "{APP_RULE}.apps ({extra} duplicate entries, or entries past the {MAX_RULE_APPS}th, \
+             dropped)"
+        ));
+    }
+    (rule, problems)
+}
+
+/// One `appRule.apps` entry, if it is an object with a non-empty string `id`.
+fn lenient_rule_entry(entry: &Value) -> Option<AppRuleEntry> {
+    let id = entry.get("id")?.as_str()?.trim();
+    if id.is_empty() {
+        return None;
+    }
+    let name = entry.get("name").and_then(Value::as_str).map(str::trim).unwrap_or_default();
+    let name = if name.is_empty() { id } else { name };
+    Some(AppRuleEntry { id: id.to_owned(), name: name.to_owned() })
 }
 
 /// Writes `settings` to `path` atomically: a temporary file in the same folder, flushed to
@@ -362,6 +444,157 @@ mod tests {
         assert_eq!(s.pack_id, DEFAULT_PACK_ID);
         let s = sanitize(Settings { pack_id: " linear-red ".into(), ..Settings::default() });
         assert_eq!(s.pack_id, "linear-red");
+    }
+
+    /// A Milestone 3 file: the new fields take their defaults, except `onboardingDone`, which
+    /// is true (whoever has a settings file has run TakTak before).
+    #[test]
+    fn milestone_3_files_migrate() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        fs::write(
+            &path,
+            r#"{
+                "enabled": true,
+                "packId": "typewriter",
+                "masterVolume": 0.5,
+                "pressVolume": 1.0,
+                "releaseVolume": 0.8,
+                "variantMode": "random",
+                "humanize": 0.25,
+                "muteHotkey": "CommandOrControl+Alt+Shift+M",
+                "launchAtLogin": false
+            }"#,
+        )
+        .unwrap();
+        let loaded = load(&path);
+        assert_eq!(loaded.note, None, "migrating is not a problem");
+        let s = loaded.settings;
+        assert_eq!((s.pack_id.as_str(), s.master_volume), ("typewriter", 0.5));
+        assert_eq!(s.app_rule, AppRule::default());
+        assert!(!s.mute_on_output_change);
+        assert!(s.onboarding_done);
+
+        // Written back, the field is there, and false stays false.
+        save(&path, &Settings { onboarding_done: false, ..s }).unwrap();
+        assert!(!load(&path).settings.onboarding_done);
+        // A fresh install (no file) has not seen the onboarding.
+        assert!(!load(&dir.path().join("missing.json")).settings.onboarding_done);
+        // Even an almost empty file was written by TakTak.
+        fs::write(&path, "{}").unwrap();
+        assert!(load(&path).settings.onboarding_done);
+        // A wrong-typed value resets to the default, like any other field.
+        fs::write(&path, r#"{"onboardingDone": "yes"}"#).unwrap();
+        let loaded = load(&path);
+        assert!(!loaded.settings.onboarding_done);
+        assert!(loaded.note.unwrap().contains("onboardingDone"));
+    }
+
+    #[test]
+    fn app_rules_round_trip() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        let settings = Settings {
+            app_rule: AppRule {
+                mode: AppRuleMode::Only,
+                apps: vec![
+                    AppRuleEntry { id: "com.apple.Safari".into(), name: "Safari".into() },
+                    AppRuleEntry { id: "us.zoom.xos".into(), name: "zoom.us".into() },
+                ],
+            },
+            mute_on_output_change: true,
+            onboarding_done: true,
+            ..Settings::default()
+        };
+        save(&path, &settings).unwrap();
+        assert_eq!(load(&path), Loaded { settings, note: None });
+    }
+
+    fn app_rule_of(json: &str) -> (AppRule, Option<String>) {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        fs::write(&path, format!(r#"{{"packId": "typewriter", "appRule": {json}}}"#)).unwrap();
+        let loaded = load(&path);
+        assert_eq!(loaded.settings.pack_id, "typewriter", "other fields are kept");
+        (loaded.settings.app_rule, loaded.note)
+    }
+
+    fn entry(id: &str, name: &str) -> AppRuleEntry {
+        AppRuleEntry { id: id.into(), name: name.into() }
+    }
+
+    #[test]
+    fn app_rule_leniency_keeps_what_it_can() {
+        // A wrong-typed mode keeps the list.
+        let (rule, note) =
+            app_rule_of(r#"{"mode": "sometimes", "apps": [{"id": "a.b", "name": "A"}]}"#);
+        assert_eq!(rule, AppRule { mode: AppRuleMode::Everywhere, apps: vec![entry("a.b", "A")] });
+        assert!(note.unwrap().contains("appRule.mode"));
+
+        // A wrong-typed list becomes empty and keeps the mode.
+        let (rule, note) = app_rule_of(r#"{"mode": "never", "apps": {"id": "a.b"}}"#);
+        assert_eq!(rule, AppRule { mode: AppRuleMode::Never, apps: vec![] });
+        assert!(note.unwrap().contains("appRule.apps"));
+
+        // A wrong-typed appRule resets as a whole.
+        let (rule, note) = app_rule_of(r#""only""#);
+        assert_eq!(rule, AppRule::default());
+        assert!(note.unwrap().contains("appRule"));
+
+        // Bad entries are dropped, the others kept; ids trimmed; names defaulted; duplicates
+        // dropped; unknown fields ignored (and not written back).
+        let (rule, note) = app_rule_of(
+            r#"{
+                "mode": "only",
+                "future": true,
+                "apps": [
+                    {"id": " com.apple.Safari ", "name": " Safari ", "packId": "typewriter"},
+                    "com.bare.string",
+                    {"name": "No id"},
+                    {"id": 42, "name": "Number"},
+                    {"id": "   ", "name": "Blank"},
+                    {"id": "us.zoom.xos"},
+                    {"id": "com.hnc.Discord", "name": 7},
+                    {"id": "com.tinyspeck.slackmacgap", "name": ""},
+                    {"id": "com.apple.Safari", "name": "Duplicate"},
+                    null
+                ]
+            }"#,
+        );
+        assert_eq!(
+            rule,
+            AppRule {
+                mode: AppRuleMode::Only,
+                apps: vec![
+                    entry("com.apple.Safari", "Safari"),
+                    entry("us.zoom.xos", "us.zoom.xos"),
+                    entry("com.hnc.Discord", "com.hnc.Discord"),
+                    entry("com.tinyspeck.slackmacgap", "com.tinyspeck.slackmacgap"),
+                ],
+            }
+        );
+        let note = note.unwrap();
+        assert!(note.contains("5 invalid entries") && note.contains("1 duplicate"), "{note}");
+
+        // Missing parts take their defaults without a note.
+        let (rule, note) = app_rule_of(r#"{"apps": [{"id": "a.b", "name": "A"}]}"#);
+        assert_eq!(rule.mode, AppRuleMode::Everywhere);
+        assert_eq!(rule.apps, [entry("a.b", "A")]);
+        assert_eq!(note, None);
+        let (rule, note) = app_rule_of(r#"{"mode": "never"}"#);
+        assert_eq!(rule, AppRule { mode: AppRuleMode::Never, apps: vec![] });
+        assert_eq!(note, None);
+    }
+
+    #[test]
+    fn at_most_two_hundred_listed_apps_load() {
+        let apps: Vec<String> =
+            (0..250).map(|i| format!(r#"{{"id": "com.example.app{i}", "name": "App"}}"#)).collect();
+        let (rule, note) =
+            app_rule_of(&format!(r#"{{"mode": "never", "apps": [{}]}}"#, apps.join(",")));
+        assert_eq!(rule.apps.len(), MAX_RULE_APPS);
+        assert_eq!(rule.apps[199].id, "com.example.app199");
+        assert!(note.unwrap().contains("50 duplicate entries, or entries past the 200th"));
     }
 
     /// Counts the writes the persister makes by watching the file's content change.

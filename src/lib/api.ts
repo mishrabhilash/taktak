@@ -6,6 +6,9 @@ import { type InvokeArgs, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import type {
+  AppInfo,
+  AppRef,
+  AppRuleMode,
   AppState,
   Command,
   CommandArgs,
@@ -57,12 +60,15 @@ export async function onStateChanged(listener: (state: AppState) => void): Promi
   return (await backend()).onStateChanged(listener);
 }
 
-/** The label of the window this UI runs in. In a browser: `?window=tray`, else "settings". */
+/**
+ * The label of the window this UI runs in. In a browser: `?window=tray` or `?window=onboarding`,
+ * else "settings".
+ */
 export function windowLabel(): WindowLabel {
   const label = isTauri
     ? getCurrentWindow().label
     : new URLSearchParams(window.location.search).get('window');
-  return label === 'tray' ? 'tray' : 'settings';
+  return label === 'tray' || label === 'onboarding' ? label : 'settings';
 }
 
 /** The user-facing message of a rejected command (commands reject with a string). */
@@ -104,3 +110,27 @@ export const openPermissionSettings = (): Promise<void> => call('open_permission
 /** null until 5 presses have been measured since the window opened. */
 export const getLatency = (): Promise<LatencyReport | null> => call('get_latency');
 export const quit = (): Promise<void> => call('quit');
+
+// Milestone 4: per-app rules, auto-mute, onboarding.
+
+/** Running regular apps (TakTak excluded), sorted by name, with cached icons. [] if unsupported. */
+export const listRunningApps = (): Promise<AppInfo[]> => call('list_running_apps');
+/** The native app picker; null when cancelled. Does not add the app (see `addRuleApp`). */
+export const chooseApp = (): Promise<AppInfo | null> => call('choose_app');
+/** Icons of installed apps by bundle id (for listed apps that are not running); null = none. */
+export const getAppIcons = (ids: string[]): Promise<Record<string, string | null>> =>
+  call('get_app_icons', { ids });
+export const setAppRuleMode = (mode: AppRuleMode): Promise<AppState> =>
+  call('set_app_rule_mode', { mode });
+/** Appends the app to the rule list; already listed = no change. Rejects with a message. */
+export const addRuleApp = (app: AppRef): Promise<AppState> =>
+  call('add_rule_app', { id: app.id, name: app.name });
+export const removeRuleApp = (id: string): Promise<AppState> => call('remove_rule_app', { id });
+/** Turning it off also clears an "outputChanged" auto-mute. */
+export const setMuteOnOutputChange = (enabled: boolean): Promise<AppState> =>
+  call('set_mute_on_output_change', { enabled });
+export const openOnboarding = (): Promise<void> => call('open_onboarding');
+/** Marks the onboarding done and closes its window. */
+export const finishOnboarding = (): Promise<AppState> => call('finish_onboarding');
+/** Quits and starts TakTak again (the promise never settles in the app). */
+export const relaunch = (): Promise<void> => call('relaunch');

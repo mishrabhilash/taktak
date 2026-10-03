@@ -1,26 +1,60 @@
-//! The two webview windows (`docs/ui-contract.md` § Windows). Both load the same bundle; the UI
-//! picks its view from the window label.
+//! The webview windows (`docs/ui-contract.md` § Windows): the tray popover, Settings and the
+//! onboarding window. All load the same bundle; the UI picks its view from the window label.
 //!
 //! Call these from a command or a spawned task, not directly from a synchronous event handler:
 //! creating a webview there deadlocks on Windows (WebView2).
 //!
 //! Memory: each webview keeps WebKit helper processes alive (WebContent ~20–40 MB, plus the GPU
-//! and Networking processes), so neither window lives longer than it is useful. Settings is
-//! destroyed when it closes. The popover is hidden on blur and destroyed once it has stayed
-//! hidden for [`TRAY_KEEP`], or soon after Settings opens; the next click recreates it (~0.2 s).
+//! and Networking processes), so no window lives longer than it is useful. Settings and the
+//! onboarding window are destroyed when they close. The popover is hidden on blur and destroyed
+//! once it has stayed hidden for [`TRAY_KEEP`], or soon after another window opens; the next
+//! click recreates it (~0.2 s).
+//!
+//! Also here: whether to offer the onboarding ([`offer_onboarding`], [`open_at_startup`]).
 
 use crate::service::Service;
-use std::sync::atomic::{AtomicU64, Ordering};
+use crate::state::Permission;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{
+    AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
+};
 use tauri_plugin_positioner::{Position, WindowExt};
 
 /// The popover anchored to the tray icon.
 pub const TRAY: &str = "tray";
 /// The settings window.
 pub const SETTINGS: &str = "settings";
+/// The welcome and permission guide (M4).
+pub const ONBOARDING: &str = "onboarding";
+
+/// `onboarding.offer`: the onboarding was never closed, or the platform needs a permission the
+/// user has not granted (live).
+pub fn offer_onboarding(done: bool, permission_required: bool, permission: Permission) -> bool {
+    !done || (permission_required && permission == Permission::Denied)
+}
+
+/// Whether the app opens the onboarding window at startup, once the first permission check is
+/// done: when it is offered, or when a relaunch from the onboarding window asked for it again
+/// (`--onboarding`).
+pub fn open_at_startup(offer: bool, reopen: bool) -> bool {
+    offer || reopen
+}
+
+/// Set once the app is quitting (or relaunching): closing the onboarding window then does not
+/// count as the user closing it.
+static EXITING: AtomicBool = AtomicBool::new(false);
+
+/// Records that the app is quitting; see [`EXITING`].
+pub fn mark_exiting() {
+    EXITING.store(true, Ordering::Relaxed);
+}
+
+fn exiting() -> bool {
+    EXITING.load(Ordering::Relaxed)
+}
 
 /// A tray click this soon after the popover hid on blur is the click that blurred it: it
 /// closes the popover rather than reopening it.
@@ -89,6 +123,61 @@ pub fn show_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     }
     // An accessory app (no Dock icon) is not activated by opening a window; bring it forward.
     window.set_focus()
+}
+
+/// Shows the onboarding window, focusing it if it exists and creating it otherwise. Closing it
+/// destroys it; the user closing it marks the onboarding as done (`settings.onboardingDone`),
+/// quitting or relaunching while it is open does not.
+pub fn show_onboarding<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    let _opening = OPENING.lock().unwrap_or_else(PoisonError::into_inner);
+    unhide(app);
+    let window = match app.get_webview_window(ONBOARDING) {
+        Some(window) => {
+            window.unminimize()?;
+            window.show()?;
+            window
+        }
+        None => {
+            let window =
+                WebviewWindowBuilder::new(app, ONBOARDING, WebviewUrl::App("index.html".into()))
+                    .title("Welcome to TakTak")
+                    .inner_size(560.0, 640.0)
+                    .resizable(false)
+                    .maximizable(false)
+                    .minimizable(false)
+                    .center()
+                    .focused(true)
+                    .build()?;
+            let handle = app.clone();
+            window.on_window_event(move |event| {
+                if let WindowEvent::CloseRequested { .. } = event
+                    && !exiting()
+                    && let Some(service) = handle.try_state::<Service>()
+                {
+                    service.update(|s| s.settings.onboarding_done = true);
+                }
+            });
+            window
+        }
+    };
+    if app.get_webview_window(TRAY).is_some() {
+        schedule_tray_destroy(app, TRAY_KEEP_BESIDE_SETTINGS);
+    }
+    window.set_focus()
+}
+
+/// Closes the onboarding window if it is open (`finish_onboarding`, which has already marked
+/// the onboarding as done).
+pub fn close_onboarding<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
+    match app.get_webview_window(ONBOARDING) {
+        Some(window) => window.destroy(),
+        None => Ok(()),
+    }
+}
+
+/// Whether the onboarding window is open (a relaunch then opens it again).
+pub fn onboarding_open<R: Runtime>(app: &AppHandle<R>) -> bool {
+    app.get_webview_window(ONBOARDING).is_some()
 }
 
 /// Shows the tray popover under (or above) the tray icon, or hides it if it is showing.
@@ -196,14 +285,14 @@ fn destroy_hidden_tray<R: Runtime>(app: &AppHandle<R>, shows: u64) -> tauri::Res
 
 /// macOS: showing the popover made TakTak the active app, and hiding a window does not hand
 /// that back. Hiding the app does: the app the user was typing in becomes active again. Not
-/// while the settings window shows (hiding the app would hide it too).
+/// while the settings or onboarding window shows (hiding the app would hide it too).
 fn give_back_focus<R: Runtime>(app: &AppHandle<R>) {
     #[cfg(target_os = "macos")]
     {
-        let settings_shown = app
-            .get_webview_window(SETTINGS)
-            .is_some_and(|window| window.is_visible().unwrap_or(false));
-        if !settings_shown && let Err(e) = app.hide() {
+        let window_shown = [SETTINGS, ONBOARDING].into_iter().any(|label| {
+            app.get_webview_window(label).is_some_and(|window| window.is_visible().unwrap_or(false))
+        });
+        if !window_shown && let Err(e) = app.hide() {
             log::debug!("cannot hand the focus back: {e}");
         }
     }
@@ -234,6 +323,25 @@ mod tests {
         assert!(!hidden_recently(now + REOPEN_GUARD));
         *HIDDEN_ON_BLUR.lock().unwrap() = None;
         assert!(!hidden_recently(now));
+    }
+
+    #[test]
+    fn the_onboarding_is_offered_until_done_and_while_permission_is_missing() {
+        use Permission::*;
+        // First launch: offered whatever the permission.
+        for permission in [Granted, Denied, Unknown] {
+            assert!(offer_onboarding(false, true, permission));
+            assert!(offer_onboarding(false, false, permission));
+        }
+        // Done: again only while a required permission is missing.
+        assert!(offer_onboarding(true, true, Denied));
+        assert!(!offer_onboarding(true, true, Granted));
+        assert!(!offer_onboarding(true, true, Unknown), "TAKTAK_NO_INPUT or not checked yet");
+        assert!(!offer_onboarding(true, false, Denied), "no permission step here");
+
+        assert!(open_at_startup(true, false));
+        assert!(open_at_startup(false, true), "relaunched from the onboarding window");
+        assert!(!open_at_startup(false, false));
     }
 
     #[test]
