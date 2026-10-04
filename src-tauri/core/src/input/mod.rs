@@ -6,10 +6,23 @@
 
 use crate::key::Key;
 
+pub mod keymap_linux;
 pub mod keymap_macos;
+pub mod keymap_windows;
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
+
+#[cfg(target_os = "linux")]
+use linux as platform;
+#[cfg(target_os = "macos")]
+use macos as platform;
+#[cfg(target_os = "windows")]
+use windows as platform;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum KeyAction {
@@ -29,7 +42,8 @@ pub struct KeyEvent {
 
 #[derive(Debug)]
 pub enum InputError {
-    /// The OS refused the hook; on macOS this means Input Monitoring is not granted.
+    /// The OS refused the hook: on macOS Input Monitoring is not granted; on Linux (evdev
+    /// backend) the keyboard devices in `/dev/input` are not readable. Never on Windows.
     PermissionDenied,
     Unsupported(&'static str),
     Platform(String),
@@ -38,10 +52,7 @@ pub enum InputError {
 impl std::fmt::Display for InputError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            InputError::PermissionDenied => f.write_str(
-                "keyboard listening was refused: grant Input Monitoring permission \
-                 (System Settings → Privacy & Security → Input Monitoring)",
-            ),
+            InputError::PermissionDenied => f.write_str(PERMISSION_DENIED),
             InputError::Unsupported(why) => write!(f, "unsupported platform: {why}"),
             InputError::Platform(msg) => write!(f, "keyboard hook failed: {msg}"),
         }
@@ -50,22 +61,48 @@ impl std::fmt::Display for InputError {
 
 impl std::error::Error for InputError {}
 
+#[cfg(not(target_os = "linux"))]
+const PERMISSION_DENIED: &str = "keyboard listening was refused: grant Input Monitoring \
+     permission (System Settings → Privacy & Security → Input Monitoring)";
+#[cfg(target_os = "linux")]
+const PERMISSION_DENIED: &str = "keyboard listening was refused: the keyboard devices in \
+     /dev/input are not readable. On Wayland (or with TAKTAK_INPUT=evdev) TakTak reads them \
+     directly, which needs membership of the `input` group: `sudo usermod -aG input \"$USER\"`, \
+     then log out and back in. Note that this lets every program you run read every keystroke";
+
+/// The longest plausible delay between an OS event timestamp and our hook receiving it. An
+/// older timestamp means the two clocks disagree, and the receive time is used instead.
+#[cfg(any(target_os = "linux", test))]
+const MAX_EVENT_AGE_NS: u64 = 1_000_000_000;
+
+/// `event_ns` for an event that the OS stamped `age_ns` before we received it at
+/// `received_ns`, for backends whose timestamps are on another clock than [`crate::clock`].
+#[cfg(any(target_os = "linux", test))]
+fn backdate(received_ns: u64, age_ns: u64) -> u64 {
+    if age_ns > MAX_EVENT_AGE_NS { received_ns } else { received_ns.saturating_sub(age_ns) }
+}
+
 /// A running listener. Dropping it stops the hook and joins its thread.
 pub struct Listener {
     #[cfg(target_os = "macos")]
     inner: macos::TapHandle,
+    #[cfg(target_os = "windows")]
+    inner: windows::HookHandle,
+    #[cfg(target_os = "linux")]
+    inner: linux::Handle,
 }
 
 impl Listener {
-    /// Times the OS disabled the hook (macOS does after a stall) and it was re-enabled, since
-    /// the last call. The hook thread cannot log, so poll this from the control side; keys
-    /// pressed while the hook was off made no sound.
+    /// Times the OS made the hook miss events since the last call: macOS disabled the tap
+    /// after a stall and it was re-enabled; Linux evdev dropped events (`SYN_DROPPED`).
+    /// Always 0 on Windows, which removes a slow hook without telling. The hook thread cannot
+    /// log, so poll this from the control side; keys pressed in that window made no sound.
     pub fn take_reenabled(&self) -> u32 {
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
         {
             self.inner.take_reenabled()
         }
-        #[cfg(not(target_os = "macos"))]
+        #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
         {
             0
         }
@@ -78,37 +115,48 @@ pub fn start<F>(callback: F) -> Result<Listener, InputError>
 where
     F: FnMut(KeyEvent) + Send + 'static,
 {
-    #[cfg(target_os = "macos")]
+    #[cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))]
     {
-        Ok(Listener { inner: macos::start(Box::new(callback))? })
+        Ok(Listener { inner: platform::start(Box::new(callback))? })
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = callback;
-        Err(InputError::Unsupported("Windows and Linux listeners are not implemented yet"))
+        Err(InputError::Unsupported("no key listener for this operating system"))
     }
 }
 
-/// Whether the OS currently allows us to listen (macOS: Input Monitoring). Never prompts.
+/// Whether the OS currently allows us to listen. Never prompts. macOS: Input Monitoring.
+/// Windows: always (no permission exists). Linux: always on X11; with the evdev backend
+/// (Wayland), whether the keyboard devices are readable.
 pub fn has_permission() -> bool {
     #[cfg(target_os = "macos")]
     {
         macos::preflight()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::has_permission()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         true
     }
 }
 
 /// Asks the OS for permission, showing its prompt if it has not been answered before.
-/// Returns whether permission is granted right now.
+/// Returns whether permission is granted right now. Only macOS has a prompt; elsewhere this
+/// is [`has_permission`].
 pub fn request_permission() -> bool {
     #[cfg(target_os = "macos")]
     {
         macos::request()
     }
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    {
+        linux::request_permission()
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         true
     }
@@ -165,6 +213,14 @@ mod tests {
         assert!(!s.accept(Key::KeyJ, KeyAction::Down));
         assert!(s.accept(Key::KeyJ, KeyAction::Up));
         assert!(s.accept(Key::KeyJ, KeyAction::Down));
+    }
+
+    #[test]
+    fn backdate_trusts_only_plausible_ages() {
+        assert_eq!(backdate(10_000_000, 2_000_000), 8_000_000);
+        assert_eq!(backdate(10_000_000, 0), 10_000_000);
+        assert_eq!(backdate(1_000, 5_000), 0);
+        assert_eq!(backdate(10_000_000_000, MAX_EVENT_AGE_NS + 1), 10_000_000_000);
     }
 
     #[test]
