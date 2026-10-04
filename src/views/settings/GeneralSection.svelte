@@ -10,6 +10,7 @@
     setMuteOnOutputChange,
   } from '../../lib/api';
   import { formatAudioDevice } from '../../lib/format';
+  import { COPY } from '../../lib/onboarding';
   import { permissionName, platform } from '../../lib/platform';
   import { grantLabel } from '../../lib/status';
   import { run, set } from '../../lib/store.svelte';
@@ -103,7 +104,7 @@
       </span>
     </div>
     <button type="button" class="btn" onclick={() => run(openOnboarding())}>
-      Show Welcome Guide
+      {COPY.showAgain}
     </button>
   </div>
 </div>

@@ -1,5 +1,6 @@
 //! The menu-bar / tray icon: left click toggles the popover, right click opens the native menu
-//! (`Sounds On`, `Pack ▸`, `Mute`, `Settings…`, `Quit TakTak`), kept in sync with the state.
+//! (`Sounds On`, `Pack ▸`, `Mute`, `Settings…`, `Welcome Guide…`, `Quit TakTak`), kept in sync
+//! with the state.
 //! While sounds are on and not muted by hand but still silent, a status item at the top of the
 //! menu and the tooltip say why ([`status`]).
 //!
@@ -27,6 +28,7 @@ const MENU_PACKS: &str = "packs";
 const MENU_NO_PACKS: &str = "no-packs";
 const MENU_MUTE: &str = "mute";
 const MENU_SETTINGS: &str = "settings";
+const MENU_WELCOME: &str = "welcome";
 const MENU_QUIT: &str = "quit";
 /// Pack items are `pack:<id>`.
 const PACK_PREFIX: &str = "pack:";
@@ -150,6 +152,9 @@ pub enum MenuAction {
     ToggleMute,
     SelectPack(String),
     Settings,
+    /// `Welcome Guide…`: opens the onboarding window any time (its success state once TakTak
+    /// can hear key presses).
+    Welcome,
     Quit,
 }
 
@@ -160,6 +165,7 @@ impl MenuAction {
             MENU_ENABLED => Some(MenuAction::ToggleEnabled),
             MENU_MUTE => Some(MenuAction::ToggleMute),
             MENU_SETTINGS => Some(MenuAction::Settings),
+            MENU_WELCOME => Some(MenuAction::Welcome),
             MENU_QUIT => Some(MenuAction::Quit),
             _ => id.strip_prefix(PACK_PREFIX).map(|p| MenuAction::SelectPack(p.to_owned())),
         }
@@ -281,13 +287,15 @@ pub fn create<R: Runtime>(app: &AppHandle<R>, state: &AppState) -> tauri::Result
     let packs = Submenu::with_id(app, MENU_PACKS, "Pack", true)?;
     let mute = CheckMenuItem::with_id(app, MENU_MUTE, "Mute", true, false, None::<&str>)?;
     let settings = MenuItem::with_id(app, MENU_SETTINGS, "Settings…", true, None::<&str>)?;
+    let welcome = MenuItem::with_id(app, MENU_WELCOME, "Welcome Guide…", true, None::<&str>)?;
     let quit = MenuItem::with_id(app, MENU_QUIT, "Quit TakTak", true, None::<&str>)?;
-    let items: [&dyn IsMenuItem<R>; 7] = [
+    let items: [&dyn IsMenuItem<R>; 8] = [
         &enabled,
         &packs,
         &mute,
         &PredefinedMenuItem::separator(app)?,
         &settings,
+        &welcome,
         &PredefinedMenuItem::separator(app)?,
         &quit,
     ];
@@ -369,6 +377,7 @@ fn on_menu_event<R: Runtime>(app: &AppHandle<R>, event: MenuEvent) {
             }
         }
         MenuAction::Settings => spawn_window_task(app, windows::show_settings),
+        MenuAction::Welcome => spawn_window_task(app, windows::show_onboarding),
         MenuAction::Quit => app.exit(0),
     }
     // A click toggles a check item even when the state did not change (choosing the selected
@@ -503,6 +512,7 @@ mod tests {
         assert_eq!(MenuAction::of(MENU_ENABLED), Some(MenuAction::ToggleEnabled));
         assert_eq!(MenuAction::of(MENU_MUTE), Some(MenuAction::ToggleMute));
         assert_eq!(MenuAction::of(MENU_SETTINGS), Some(MenuAction::Settings));
+        assert_eq!(MenuAction::of(MENU_WELCOME), Some(MenuAction::Welcome));
         assert_eq!(MenuAction::of(MENU_QUIT), Some(MenuAction::Quit));
         assert_eq!(
             MenuAction::of("pack:buckling-spring"),

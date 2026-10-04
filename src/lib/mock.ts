@@ -31,6 +31,8 @@
 // same pack again (alreadyImported; overwrite_mechvibes_pack replaces it), a pack with no usable
 // sounds (rejected), and a cancelled picker (null).
 // Pick the view with ?window=tray, ?window=onboarding or ?window=settings (default).
+// open_onboarding ("Show Welcome Guide" in Settings → About and General) opens the onboarding
+// view in another tab, with the same scenarios (see `onboardingUrl`).
 
 import { version } from '../../package.json';
 import type { Backend } from './api';
@@ -373,6 +375,13 @@ function loadSelected(s: AppState): void {
   }
 }
 
+/** The page the mock's open_onboarding opens: this page's query with `window=onboarding`. */
+export function onboardingUrl(search: string): string {
+  const params = new URLSearchParams(search);
+  params.set('window', 'onboarding');
+  return `?${params.toString()}`;
+}
+
 /**
  * A mock backend for one page; see the header comment for the scenarios. `search` is the page's
  * query string (tests pass their own).
@@ -613,7 +622,12 @@ export function createMockBackend(
         s.settings.muteOnOutputChange = enabled;
         if (!enabled) autoMute.outputChanged = false;
       }),
-    open_onboarding: () => console.info('[mock] open the onboarding window (?window=onboarding)'),
+    open_onboarding: () => {
+      const url = onboardingUrl(search);
+      console.info(`[mock] open the onboarding window (${url})`);
+      // Like the app, one onboarding window: a second call focuses the same tab.
+      if (typeof window !== 'undefined') window.open(url, 'taktak-onboarding');
+    },
     finish_onboarding: () => {
       console.info('[mock] close the onboarding window');
       return change((s) => (s.settings.onboardingDone = true));

@@ -36,6 +36,8 @@ the app the user was typing in (TakTak hides itself unless Settings is showing).
 
 The tray icon's **right-click** opens a native menu: `Sounds On` (check), `Pack ▸` (radio
 list), `Mute` (check, shows the hotkey), `Settings…`, `Quit TakTak`. Tooltip: `TakTak`.
+`Welcome Guide…`, right under `Settings…`, opens the onboarding window (like `open_onboarding`)
+at any time.
 
 **(M4)** Additions to the tray:
 
@@ -406,13 +408,16 @@ still there after the unlock.
   window appears in a launch (~0.7 s after it shows), the app asks macOS once to list TakTak
   under Input Monitoring, if macOS has never decided on it, so TakTak is in the list even when
   the user opens System Settings by hand. At most once per launch automatically, never in a
-  loop. `open_permission_settings` asks the same way (when undecided) and opens the pane.
+  loop, and never while `permission` is `"granted"` (the window reopened later asks nothing). `open_permission_settings` asks the same way (when undecided) and opens the pane.
 - While the window is open, the existing 2 s permission poll flips `permission` to `"granted"`
   without a restart whenever macOS allows it; the window turns into its success state from the
   `state-changed` event. When macOS reports access but the listener still cannot start,
   `relaunchSuggested` turns true and the window leads with "Quit & Reopen" (`relaunch`).
-- The window can be opened again any time with `open_onboarding` (Settings, and the tray status
-  item while permission is missing).
+- The window can be opened again any time with `open_onboarding`: "Show Welcome Guide" in
+  Settings → About and Settings → General (Permissions), `Welcome Guide…` in the tray menu, and
+  the tray status item while permission is missing. When TakTak can already hear key presses
+  it opens straight in its success state ("✓ You're all set — start typing" and Done, no
+  "Later", no troubleshooting, no celebration) and triggers no permission request.
 
 ### Relaunch (M4)
 
@@ -496,7 +501,9 @@ still there after the unlock.
      12 lock hint.
   7. Linux without the `input` group: the command `sudo usermod -aG input $USER` with Copy, "Run
      it in a terminal, then log out and back in." and its cost (always visible), then Done.
-- **Settings → About** (or General): "Show welcome guide" (`open_onboarding`).
+- **Settings → About** and **Settings → General** (Permissions): a "Welcome guide" row with the
+  button "Show Welcome Guide" (`open_onboarding`; the label is `COPY.showAgain`). The tray
+  menu's `Welcome Guide…` does the same.
 
 ## UI requirements (Milestone 5)
 
@@ -608,7 +615,8 @@ not part of this contract yet.
 - Browser development: `npm run dev` and open <http://localhost:1420>. Outside Tauri,
   `src/lib/api.ts` answers from an in-memory mock (`src/lib/mock.ts`) listing the bundled packs
   from `packs/*/pack.json`; `?window=tray` picks the popover view (**(M4)** `?window=onboarding`
-  the onboarding view), and `?scenario=denied,fault,invalid,empty` (any combination) simulates
+  the onboarding view; the mock's `open_onboarding` opens it in another tab, keeping the
+  scenarios), and `?scenario=denied,fault,invalid,empty` (any combination) simulates
   missing permission, an audio fault that recovers, broken/user packs and no packs. **(M4)** More
   scenarios: `firstrun` (onboarding not done yet; by default the mock is a returning user),
   `relaunch` (permission granted per macOS but the listener refused: `relaunchSuggested`;

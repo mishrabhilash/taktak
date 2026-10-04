@@ -70,6 +70,8 @@ export const TROUBLESHOOT_AFTER_MS = 20_000;
 /** The words, kept few. */
 export const COPY = {
   title: 'Welcome to TakTak',
+  /** The button that opens this window again (Settings → About and General). */
+  showAgain: 'Show Welcome Guide',
   lineMac: 'TakTak needs Input Monitoring to hear when keys go down. It never sees what you type.',
   lineOther: 'Mechanical keyboard sounds as you type, in every app.',
   lineInputGroup: 'On Wayland, TakTak needs your user in the input group to hear your keys.',

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createMockBackend } from './mock';
+import { createMockBackend, onboardingUrl } from './mock';
 import type { AppState } from './types';
 
 /** Lets the mock's 10 ms call delay and its event timers run. */
@@ -559,5 +559,12 @@ describe('mock backend', () => {
     unlisten();
     await Promise.all([backend.call('set_enabled', { enabled: false }), settle()]);
     expect(events).toEqual([]);
+  });
+
+  it('opens the onboarding view with the same scenarios', () => {
+    expect(onboardingUrl('')).toBe('?window=onboarding');
+    expect(onboardingUrl('?window=settings&scenario=denied,fault')).toBe(
+      '?window=onboarding&scenario=denied%2Cfault',
+    );
   });
 });

@@ -1,9 +1,11 @@
 <script lang="ts">
   import Icon from '../../components/Icon.svelte';
   import Logo from '../../components/Logo.svelte';
-  import { getLatency } from '../../lib/api';
+  import { getLatency, openOnboarding } from '../../lib/api';
   import { formatMs } from '../../lib/format';
   import { OFFLINE } from '../../lib/offline';
+  import { COPY } from '../../lib/onboarding';
+  import { run } from '../../lib/store.svelte';
   import type { AppState, LatencyReport } from '../../lib/types';
 
   let { s }: { s: AppState } = $props();
@@ -66,6 +68,24 @@
   </div>
 </div>
 
+<div class="group">
+  <div class="row wrap">
+    <div class="row-text">
+      <span class="row-label">Welcome guide</span>
+      <span class="hint">
+        {#if s.onboarding.permissionRequired}
+          The welcome screen from the first launch, with help when TakTak can’t hear your keys.
+        {:else}
+          The welcome screen from the first launch.
+        {/if}
+      </span>
+    </div>
+    <button type="button" class="btn" onclick={() => run(openOnboarding())}>
+      {COPY.showAgain}
+    </button>
+  </div>
+</div>
+
 <h2 class="group-title">Latency</h2>
 <div class="group latency" aria-live="off">
   <!-- The same layout with or without numbers, so nothing moves when they arrive. -->
@@ -122,6 +142,15 @@
 </div>
 
 <style>
+  /* In a narrow window the button goes under the text instead of squeezing it. */
+  .wrap {
+    flex-wrap: wrap;
+  }
+
+  .wrap .row-text {
+    flex: 1 1 240px;
+  }
+
   .about-header {
     display: flex;
     align-items: center;

@@ -16,6 +16,7 @@
 //! request runs at most once per launch, and only while TakTak has never been decided on.
 
 use crate::service::Service;
+use crate::state::Permission;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::thread;
@@ -53,6 +54,14 @@ pub fn should_request(before: Access) -> bool {
 /// this launch, and never decided.
 pub fn should_auto_request(required: bool, before: Access, already_asked: bool) -> bool {
     required && !already_asked && should_request(before)
+}
+
+/// Whether showing the onboarding window schedules that request at all: not where no
+/// permission is required, not once asked in this launch, and not while TakTak can already
+/// hear key presses (the window, reopened from Settings or the tray, then only shows its
+/// success state).
+pub fn should_schedule_request(required: bool, granted: bool, already_asked: bool) -> bool {
+    required && !granted && !already_asked
 }
 
 pub fn outcome(before: Access, after: Access) -> Outcome {
@@ -122,11 +131,13 @@ pub fn ask<R: Runtime>(app: &AppHandle<R>) -> Outcome {
 
 /// Called whenever the onboarding window is shown: the first time in a launch (and only while
 /// macOS has never decided on TakTak), asks macOS to list TakTak, shortly after the window
-/// appears. Returns at once.
+/// appears. Never while permission is granted (see [`should_schedule_request`]). Returns at
+/// once.
 pub fn request_for_onboarding<R: Runtime>(app: &AppHandle<R>) {
-    let required =
-        app.try_state::<Service>().is_some_and(|s| s.snapshot().onboarding.permission_required);
-    if !required || REQUESTED.load(Ordering::Relaxed) {
+    let Some(state) = app.try_state::<Service>().map(|s| s.snapshot()) else { return };
+    let required = state.onboarding.permission_required;
+    let granted = state.permission == Permission::Granted;
+    if !should_schedule_request(required, granted, REQUESTED.load(Ordering::Relaxed)) {
         return;
     }
     let app = app.clone();
@@ -162,6 +173,14 @@ mod tests {
         assert!(!should_auto_request(false, Undetermined, false), "no permission step");
         assert!(!should_auto_request(true, Denied, false));
         assert!(!should_auto_request(true, Granted, false));
+    }
+
+    #[test]
+    fn reopening_the_window_with_permission_granted_asks_nothing() {
+        assert!(should_schedule_request(true, false, false));
+        assert!(!should_schedule_request(true, true, false), "granted: only the success state");
+        assert!(!should_schedule_request(true, false, true), "already asked this launch");
+        assert!(!should_schedule_request(false, false, false), "no permission step");
     }
 
     #[test]

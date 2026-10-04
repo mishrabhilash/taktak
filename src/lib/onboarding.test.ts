@@ -103,6 +103,24 @@ describe('onboardingStep', () => {
     expect(listening).toMatchObject({ phase: 'welcome', action: 'done', whyAvailable: false });
   });
 
+  it('reopened later with permission granted: only the success state, nothing to ask', () => {
+    // Opened again from Settings → About or the tray: no "Allow", no "Later", no troubleshooting.
+    const reopened = facts({ permission: 'granted' });
+    expect(onboardingStep(reopened)).toMatchObject({
+      phase: 'granted',
+      action: 'done',
+      later: false,
+      troubleshootAvailable: false,
+      troubleshoot: false,
+    });
+    expect(onboardingStatus(reopened)).toEqual({ tone: 'ok', text: COPY.allSet });
+    expect(COPY.allSet).toBe('You’re all set — start typing');
+    expect(COPY.done).toBe('Done');
+    expect(troubleshootDelay(reopened)).toBeNull();
+    // Already granted when the window opens: no celebration either.
+    expect(justGranted(null, 'granted')).toBe(false);
+  });
+
   it('keeps "Why?" for the permission, collapsed until asked', () => {
     expect(onboardingStep(facts()).whyAvailable).toBe(true);
     expect(onboardingStep(facts({ permission: 'granted' })).whyAvailable).toBe(true);
