@@ -7,3 +7,8 @@ __pycache__/
 /src-tauri/gen/schemas
 .claude/
 src-tauri/gen/schemas/
+
+# iOS spike build outputs
+/ios/spike/build/
+ios/**/xcuserdata/
+/ios/spike/build-device/

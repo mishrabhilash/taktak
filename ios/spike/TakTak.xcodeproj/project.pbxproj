@@ -1,0 +1,423 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		C1000000000000000000000001 /* TakTakApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000003 /* TakTakApp.swift */; };
+		C1000000000000000000000002 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000004 /* ContentView.swift */; };
+		C1000000000000000000000003 /* KeyboardViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000006 /* KeyboardViewController.swift */; };
+		C1000000000000000000000004 /* SoundEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000007 /* SoundEngine.swift */; };
+		C1000000000000000000000005 /* Pack.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000008 /* Pack.swift */; };
+		C1000000000000000000000006 /* TakTakKeyboard.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1000000000000000000000002 /* TakTakKeyboard.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E1000000000000000000000004 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A1000000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E1000000000000000000000002;
+			remoteInfo = TakTakKeyboard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		D1000000000000000000000004 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				C1000000000000000000000006 /* TakTakKeyboard.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		B1000000000000000000000001 /* TakTak.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TakTak.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000000000000000000000002 /* TakTakKeyboard.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TakTakKeyboard.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B1000000000000000000000003 /* TakTakApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TakTakApp.swift; sourceTree = "<group>"; };
+		B1000000000000000000000004 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		B1000000000000000000000005 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B1000000000000000000000006 /* KeyboardViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyboardViewController.swift; sourceTree = "<group>"; };
+		B1000000000000000000000007 /* SoundEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SoundEngine.swift; sourceTree = "<group>"; };
+		B1000000000000000000000008 /* Pack.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Pack.swift; sourceTree = "<group>"; };
+		B1000000000000000000000009 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D1000000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1000000000000000000000006 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		A1000000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				A1000000000000000000000004 /* TakTak */,
+				A1000000000000000000000005 /* TakTakKeyboard */,
+				A1000000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		A1000000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000001 /* TakTak.app */,
+				B1000000000000000000000002 /* TakTakKeyboard.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000000004 /* TakTak */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000003 /* TakTakApp.swift */,
+				B1000000000000000000000004 /* ContentView.swift */,
+				B1000000000000000000000005 /* Info.plist */,
+			);
+			path = TakTak;
+			sourceTree = "<group>";
+		};
+		A1000000000000000000000005 /* TakTakKeyboard */ = {
+			isa = PBXGroup;
+			children = (
+				B1000000000000000000000006 /* KeyboardViewController.swift */,
+				B1000000000000000000000007 /* SoundEngine.swift */,
+				B1000000000000000000000008 /* Pack.swift */,
+				B1000000000000000000000009 /* Info.plist */,
+			);
+			path = TakTakKeyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E1000000000000000000000001 /* TakTak */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1000000000000000000000008 /* Build configuration list for PBXNativeTarget "TakTak" */;
+			buildPhases = (
+				D1000000000000000000000001 /* Sources */,
+				D1000000000000000000000002 /* Frameworks */,
+				D1000000000000000000000003 /* Resources */,
+				D1000000000000000000000004 /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E1000000000000000000000003 /* PBXTargetDependency */,
+			);
+			name = TakTak;
+			productName = TakTak;
+			productReference = B1000000000000000000000001 /* TakTak.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E1000000000000000000000002 /* TakTakKeyboard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F1000000000000000000000009 /* Build configuration list for PBXNativeTarget "TakTakKeyboard" */;
+			buildPhases = (
+				D1000000000000000000000005 /* Sources */,
+				D1000000000000000000000006 /* Frameworks */,
+				D1000000000000000000000007 /* Resources */,
+				D1000000000000000000000008 /* Copy Tactile Pack */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = TakTakKeyboard;
+			productName = TakTakKeyboard;
+			productReference = B1000000000000000000000002 /* TakTakKeyboard.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A1000000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					E1000000000000000000000001 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+					E1000000000000000000000002 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = F1000000000000000000000007 /* Build configuration list for PBXProject "TakTak" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = A1000000000000000000000002;
+			productRefGroup = A1000000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				E1000000000000000000000001 /* TakTak */,
+				E1000000000000000000000002 /* TakTakKeyboard */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D1000000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1000000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		D1000000000000000000000008 /* Copy Tactile Pack */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Copy Tactile Pack";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/scripts/copy-pack.sh\" tactile\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		D1000000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1000000000000000000000001 /* TakTakApp.swift in Sources */,
+				C1000000000000000000000002 /* ContentView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D1000000000000000000000005 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C1000000000000000000000003 /* KeyboardViewController.swift in Sources */,
+				C1000000000000000000000004 /* SoundEngine.swift in Sources */,
+				C1000000000000000000000005 /* Pack.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E1000000000000000000000003 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E1000000000000000000000002 /* TakTakKeyboard */;
+			targetProxy = E1000000000000000000000004 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		F1000000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		F1000000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		F1000000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TakTak/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.taktak.ios;
+				PRODUCT_NAME = TakTak;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F1000000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TakTak/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.taktak.ios;
+				PRODUCT_NAME = TakTak;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F1000000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TakTakKeyboard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.taktak.ios.keyboard;
+				PRODUCT_NAME = TakTakKeyboard;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F1000000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = TakTakKeyboard/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = tech.taktak.ios.keyboard;
+				PRODUCT_NAME = TakTakKeyboard;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		F1000000000000000000000007 /* Build configuration list for PBXProject "TakTak" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1000000000000000000000001 /* Debug */,
+				F1000000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F1000000000000000000000008 /* Build configuration list for PBXNativeTarget "TakTak" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1000000000000000000000003 /* Debug */,
+				F1000000000000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F1000000000000000000000009 /* Build configuration list for PBXNativeTarget "TakTakKeyboard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F1000000000000000000000005 /* Debug */,
+				F1000000000000000000000006 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A1000000000000000000000001 /* Project object */;
+}
