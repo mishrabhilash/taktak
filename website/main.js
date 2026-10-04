@@ -8,7 +8,7 @@
 // built from this.
 // ---------------------------------------------------------------------------------------
 const CONFIG = {
-  repo: 'https://github.com/<your-org>/taktak', // TODO: the real GitHub repository
+  repo: 'https://github.com/mishrabhilash/taktak', // TODO: the real GitHub repository
   version: '0.1.0', // the release the download buttons point at (tag v<version>)
 };
 

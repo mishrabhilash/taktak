@@ -37,7 +37,7 @@ Both live in **one constant**, `CONFIG` at the top of [`main.js`](main.js):
 
 ```js
 const CONFIG = {
-  repo: 'https://github.com/<your-org>/taktak',
+  repo: 'https://github.com/mishrabhilash/taktak',
   version: '0.1.0',
 };
 ```
@@ -116,8 +116,8 @@ with output directory `_site`.
 `CNAME` holds `taktak.tech`, but the custom domain only works once DNS points at GitHub
 Pages: `A` records for the apex to `185.199.108.153`, `185.199.109.153`, `185.199.110.153`
 and `185.199.111.153` (and `AAAA` to `2606:50c0:8000::153` … `8003::153`), plus a `CNAME`
-for `www` to `<your-org>.github.io`. Until then the site is served at
-`https://<your-org>.github.io/taktak/`, where everything works except `404.html` (it uses
+for `www` to `mishrabhilash.github.io`. Until then the site is served at
+`https://mishrabhilash.github.io/taktak/`, where everything works except `404.html` (it uses
 root-relative paths). GitHub Pages ignores `_headers`; the `<meta>` CSP still applies.
 
 ## Rules for changes
