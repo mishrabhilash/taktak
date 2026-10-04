@@ -5,6 +5,9 @@
 //
 // Scenarios, combinable: ?scenario=denied,fault,invalid,empty
 //   denied        Input Monitoring not granted (granted 2 s after "open permission settings")
+//   unlisted      like denied, but macOS adds nothing to the Input Monitoring list (as after
+//                 `tccutil reset`): "open permission settings" answers false and nothing
+//                 changes until the user adds TakTak by hand (granted 6 s after reveal_app)
 //   fault         audio device fault that recovers after 4 s
 //   invalid       a user pack with a warning, a broken user pack (selected, failed, so
 //                 Buckling Spring plays instead) and an invalid one
@@ -258,7 +261,7 @@ function initialState(scenarios: Set<string>): AppState {
   };
   // A returning user, unless ?scenario=firstrun.
   state.settings.onboardingDone = !scenarios.has('firstrun');
-  if (scenarios.has('denied')) state.permission = 'denied';
+  if (scenarios.has('denied') || scenarios.has('unlisted')) state.permission = 'denied';
   if (scenarios.has('relaunch')) {
     state.permission = 'denied';
     state.onboarding.relaunchSuggested = true;
@@ -565,10 +568,13 @@ export function createMockBackend(
     open_user_packs_dir: () => console.info(`[mock] reveal ${state.userPacksDir}`),
     open_permission_settings: () => {
       console.info('[mock] open Privacy & Security → Input Monitoring');
+      if (!state.onboarding.permissionRequired) return true;
+      if (scenarios.has('unlisted') && state.permission !== 'granted') return false;
       // With ?scenario=relaunch the listener stays refused until `relaunch`.
       if (state.permission !== 'granted' && !state.onboarding.relaunchSuggested) {
         void wait(2000).then(() => change((s) => (s.permission = 'granted')));
       }
+      return true;
     },
     get_latency: () => latency(),
     quit: () => console.info('[mock] quit'),
@@ -631,6 +637,13 @@ export function createMockBackend(
       }
       overwritePending = false;
       return imported(true);
+    },
+    reveal_app: () => {
+      console.info('[mock] reveal TakTak.app in Finder');
+      // As if the user dragged it into the list and switched it on.
+      if (scenarios.has('unlisted') && state.permission !== 'granted') {
+        void wait(6000).then(() => change((s) => (s.permission = 'granted')));
+      }
     },
     relaunch: () => {
       console.info('[mock] relaunch');

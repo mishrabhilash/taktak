@@ -197,10 +197,24 @@ describe('mock backend', () => {
     const s = await call(backend.call('get_state', undefined));
     expect(s.permission).toBe('denied');
     expect(s.playing).toBe(false);
-    await call(backend.call('open_permission_settings', undefined));
+    expect(await call(backend.call('open_permission_settings', undefined))).toBe(true);
     await settle(2100);
     expect(events.at(-1)?.permission).toBe('granted');
     expect(events.at(-1)?.playing).toBe(true);
+  });
+
+  it('scenario "unlisted": macOS adds nothing to the list until TakTak is added by hand', async () => {
+    const { backend, events, call } = setup('?scenario=unlisted');
+    const s = await call(backend.call('get_state', undefined));
+    expect(s.permission).toBe('denied');
+    expect(await call(backend.call('open_permission_settings', undefined))).toBe(false);
+    await settle(2100);
+    expect(events.at(-1)?.permission ?? 'denied').toBe('denied');
+    await call(backend.call('reveal_app', undefined));
+    await settle(6100);
+    expect(events.at(-1)?.permission).toBe('granted');
+    // Listed and granted now: the button answers true.
+    expect(await call(backend.call('open_permission_settings', undefined))).toBe(true);
   });
 
   it('scenario "fault": an audio fault that recovers on another device', async () => {

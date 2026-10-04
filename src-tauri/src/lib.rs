@@ -25,6 +25,7 @@ pub mod instance;
 pub mod loader;
 pub mod logging;
 pub mod mechvibes;
+pub mod permission;
 pub mod relaunch;
 pub mod rules;
 pub mod selftest;
@@ -158,6 +159,7 @@ pub fn run() {
             commands::hide_tray,
             commands::open_user_packs_dir,
             commands::open_permission_settings,
+            commands::reveal_app,
             commands::get_latency,
             commands::quit,
             commands::list_running_apps,

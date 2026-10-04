@@ -141,7 +141,7 @@ pub fn show_onboarding<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             let window =
                 WebviewWindowBuilder::new(app, ONBOARDING, WebviewUrl::App("index.html".into()))
                     .title("Welcome to TakTak")
-                    .inner_size(560.0, 640.0)
+                    .inner_size(480.0, 440.0)
                     .resizable(false)
                     .maximizable(false)
                     .minimizable(false)
@@ -163,7 +163,10 @@ pub fn show_onboarding<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
     if app.get_webview_window(TRAY).is_some() {
         schedule_tray_destroy(app, TRAY_KEEP_BESIDE_SETTINGS);
     }
-    window.set_focus()
+    window.set_focus()?;
+    // So TakTak is in the Input Monitoring list even if the user opens System Settings by hand.
+    crate::permission::request_for_onboarding(app);
+    Ok(())
 }
 
 /// Closes the onboarding window if it is open (`finish_onboarding`, which has already marked

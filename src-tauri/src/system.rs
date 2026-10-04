@@ -1,6 +1,7 @@
-//! Handing things to the OS: revealing a folder in Finder / Explorer / the file manager, and
-//! opening the Input Monitoring pane of System Settings. Local only; nothing here touches the
-//! network. Blocks briefly, so call it from an async command, not the main thread.
+//! Handing things to the OS: revealing a folder (or TakTak itself) in Finder / Explorer / the
+//! file manager, and opening the Input Monitoring pane of System Settings. Local only; nothing
+//! here touches the network. Blocks briefly, so call it from an async command, not the main
+//! thread.
 
 use std::io;
 use std::path::Path;
@@ -49,6 +50,32 @@ pub fn reveal_dir(dir: &Path) -> io::Result<()> {
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {
+        let mut xdg = Command::new("xdg-open");
+        xdg.arg(dir);
+        spawn(xdg)
+    }
+}
+
+/// Shows `path` (a file, or an app bundle) selected in the platform's file manager; elsewhere
+/// than macOS and Windows, opens the folder that contains it.
+pub fn reveal_file(path: &Path) -> io::Result<()> {
+    #[cfg(target_os = "macos")]
+    {
+        let mut open = Command::new("/usr/bin/open");
+        open.arg("-R").arg(path);
+        run(open)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let mut select = std::ffi::OsString::from("/select,");
+        select.push(path);
+        let mut explorer = Command::new("explorer");
+        explorer.arg(select);
+        spawn(explorer)
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        let dir = path.parent().ok_or_else(|| io::Error::other("no containing folder"))?;
         let mut xdg = Command::new("xdg-open");
         xdg.arg(dir);
         spawn(xdg)

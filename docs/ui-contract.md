@@ -17,7 +17,7 @@ are marked **(M5)**.
 |---|---|---|
 | `tray` | Small popover anchored to the menu-bar/tray icon (left click). | Created on open. Hidden on blur, on a second tray click and on Escape (`hide_tray`). Destroyed once it has stayed hidden for 60 s, and 1 s after Settings opens; the next click creates it again (~0.2 s). |
 | `settings` | Full settings window, title "TakTak Settings". | Created on demand; destroyed on close (saves memory). |
-| `onboarding` **(M4)** | Welcome and permission guide, title "Welcome to TakTak". 560 × 640, not resizable, not minimizable or maximizable, centered, focused, normal title bar. | Created by the app at startup when `onboarding.offer` is true (see "Onboarding"), and by `open_onboarding` (focuses it if it exists). Destroyed on close. Closing it by the user or `finish_onboarding` (close button, ⌘W, the window's own buttons) sets `settings.onboardingDone = true`; quitting or `relaunch` while it is open does not (see "Relaunch"). Opening it destroys the hidden popover 1 s later, like Settings. |
+| `onboarding` **(M4)** | Welcome and permission guide, title "Welcome to TakTak". 480 × 440 (was 560 × 640 before the minimal redesign; the content scrolls when a disclosure is open), not resizable, not minimizable or maximizable, centered, focused, normal title bar. | Created by the app at startup when `onboarding.offer` is true (see "Onboarding"), and by `open_onboarding` (focuses it if it exists). Destroyed on close. Closing it by the user or `finish_onboarding` (close button, ⌘W, the window's own buttons) sets `settings.onboardingDone = true`; quitting or `relaunch` while it is open does not (see "Relaunch"). Opening it destroys the hidden popover 1 s later, like Settings. |
 
 Each webview keeps WebKit helper processes alive (WebContent alone is 20–40 MB), which is why
 no window outlives its use. The UI must not rely on the popover's page staying loaded
@@ -235,7 +235,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 | `open_settings` | — | Shows/creates the settings window. Returns `void`. |
 | `hide_tray` | — | Hides the tray popover (use it for Escape instead of hiding the window from JS): on macOS it also hands the keyboard back to the app the user was in. Returns `void`. |
 | `open_user_packs_dir` | — | Creates it if needed and reveals it in Finder/Explorer. Returns `void`. |
-| `open_permission_settings` | — | macOS: opens Privacy & Security → Input Monitoring. Returns `void`. **(M4)** First asks macOS to list TakTak there (`IOHIDRequestAccess`; macOS shows its own prompt the first time only), since TakTak no longer prompts at startup (see "Onboarding"). |
+| `open_permission_settings` | — | macOS: opens Privacy & Security → Input Monitoring. Returns `boolean`: whether TakTak is in that list now (always `true` on Windows and Linux, where it opens nothing). **(M4)** If macOS has never decided on TakTak (`IOHIDCheckAccess` unknown), it first asks macOS to list TakTak (`IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)` on the main thread; `CGRequestListenEventAccess` once more if that left no trace) and waits up to ~1 s per request for the entry to appear, then opens the pane, so the pane lists TakTak and does not race macOS's alert. It does not open the pane when the request itself granted access. `false` means macOS added nothing (its alert, which is what creates the entry, stops coming once macOS has recorded the app, even after `tccutil reset`; see `platform-notes.md` § macOS): the user adds TakTak with + (see `reveal_app`). Async; may take ~2 s. |
 | `get_latency` | — | Returns `LatencyReport \| null` (null until 5 presses measured since the window opened). |
 | `quit` | — | Exits the app. Returns `void` (in practice the promise never settles). |
 | `list_running_apps` **(M4)** | — | Returns `AppInfo[]`: the running regular apps (those with a Dock icon), without TakTak itself and apps that have no bundle identifier, one per id, sorted by name (case-insensitive). Icons are rendered once per id and kept in an in-memory cache (at most 256 icons, least recently used dropped first; never persisted). Async; the first call may take ~100 ms. `[]` when `!rulesSupported`. |
@@ -249,6 +249,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 | `finish_onboarding` **(M4)** | — | Sets `settings.onboardingDone = true` (persisted), then closes the onboarding window if it is open. Returns the new `AppState`. |
 | `relaunch` **(M4)** | — | Quits like `quit` (pending settings saved, audio stopped) and starts TakTak again. Returns `void` (the promise never settles). For when macOS only lets a relaunched TakTak listen (**(M5)** and for a Windows or Linux key listener that failed to start). See "Relaunch" for what the app must guarantee. |
 | `import_mechvibes_pack` **(M5)** | `{ kind: PickKind }` | Opens the native picker for a Mechvibes pack (its folder, the one with `config.json`, or its `.zip`), then converts it into the user packs folder on a worker thread (never the main thread) and returns `MechvibesImport`, or `null` when the picker was cancelled. The pack is written to a hidden folder, validated and only then moved into place, so hot reload lists it (as `origin: "user"`, `license: "LicenseRef-Personal"`) within about a second, without a restart. One import at a time. Rejects with a user-facing message: not a Mechvibes pack (with a hint to choose the folder with `config.json` or the `.zip`), an unreadable `config.json`, an unsupported pack (mouse packs, unknown config versions; names the supported formats), no usable sounds (with a hint to check that the files `config.json` names are there and readable), file errors, no user packs folder ("This system has no folder for your own packs."), and an import or picker already running ("TakTak is already importing a pack, or its pack chooser is still open."). Async: resolves when the import is done. |
+| `reveal_app` | — | Shows TakTak itself selected in the file manager (macOS: `TakTak.app` in Finder, to drag it into the Input Monitoring list or find it from +). Returns `void`. Async. |
 | `overwrite_mechvibes_pack` **(M5)** | — | Imports again, replacing the earlier import, the source of the last `import_mechvibes_pack` that returned `alreadyImported` (kept in memory only; the UI never passes a path). Returns `MechvibesImport` (`imported`, `replaced: true`). Rejects when nothing is waiting ("There is no import waiting to be replaced. Choose the pack again with Import Mechvibes pack…") and with the errors above. |
 
 ## Events
@@ -401,9 +402,11 @@ still there after the unlock.
   permission check** (macOS), or right away where no permission is required. So it shows on the
   first launch, and on every launch where Input Monitoring is missing; it does not show again
   once permission is granted and the window has been closed once.
-- TakTak no longer shows the macOS permission prompt by itself at startup (the onboarding window
-  explains first). `open_permission_settings` asks macOS to list TakTak (which shows the prompt
-  once) and opens the pane.
+- TakTak no longer shows the macOS permission prompt at startup. The first time the onboarding
+  window appears in a launch (~0.7 s after it shows), the app asks macOS once to list TakTak
+  under Input Monitoring, if macOS has never decided on it, so TakTak is in the list even when
+  the user opens System Settings by hand. At most once per launch automatically, never in a
+  loop. `open_permission_settings` asks the same way (when undecided) and opens the pane.
 - While the window is open, the existing 2 s permission poll flips `permission` to `"granted"`
   without a restart whenever macOS allows it; the window turns into its success state from the
   `state-changed` event. When macOS reports access but the listener still cannot start,
@@ -460,34 +463,47 @@ still there after the unlock.
 - **Auto-mute** (Settings → General): the switch "Mute when the output device changes" (help: "When
   headphones are plugged in or unplugged, or AirPods connect, TakTak mutes itself until you
   unmute."), and the note "TakTak is always silent while the screen is locked."
-- **Onboarding window** (`onboarding` label):
-  1. What TakTak does and where it lives (the keycap icon in the menu bar).
-  2. When `permissionRequired`: why Input Monitoring is needed ("macOS asks you to allow Input
-     Monitoring for any app that notices key presses outside its own windows.") and the privacy
-     promise ("TakTak only notices that a key went down or up — never what you type. Nothing is
-     recorded, stored or sent anywhere; TakTak has no network access.").
-  3. A button "Open Input Monitoring Settings" (`open_permission_settings`) with the step "Turn on
-     TakTak in the list".
-  4. Live status from `permission`: waiting → success ("TakTak can hear your keys. Try typing!"),
-     with no restart.
-  5. When `relaunchSuggested`: "macOS needs TakTak to restart before it can listen." with
-     "Quit & Reopen" (`relaunch`) as the main action.
-  6. Troubleshooting (expandable; expanded when `relaunchSuggested`, or when permission is still
-     missing ~20 s after the user opened System Settings): "TakTak is on in the list but still
-     can't hear keys? macOS may be holding on to an entry from an older copy of TakTak. Select
-     TakTak in the list and remove it with −, then add it again with + (it is in Applications).
-     Or run `tccutil reset ListenEvent tech.taktak.app` in Terminal, then open TakTak again." and
-     a "Quit & Reopen" button.
-  7. A closing button: "Done" once granted (or when `!permissionRequired`), "Later" otherwise;
-     both call `finish_onboarding`.
+- **Onboarding window** (`onboarding` label), minimal and friendly; the words live in
+  `src/lib/onboarding.ts` (`COPY`):
+  1. The keycap logo, the title "Welcome to TakTak" and ONE line: on macOS "TakTak needs Input
+     Monitoring to hear when keys go down. It never sees what you type."; elsewhere "Mechanical
+     keyboard sounds as you type, in every app." (Linux without the `input` group: "On Wayland,
+     TakTak needs your user in the input group to hear your keys.").
+  2. A small badge "Fully offline · never uses the internet" (the full offline sentence as its
+     tooltip).
+  3. ONE big primary button: "Allow Input Monitoring" (`open_permission_settings`) while
+     permission is missing; "Quit & Reopen" (`relaunch`) when `relaunchSuggested`; "Done"
+     (`finish_onboarding`) once there is nothing left to do (granted, or `!permissionRequired`).
+  4. A live status (`aria-live`) under it, from `permission`: "Then switch on TakTak in the
+     list." → (after the button) a spinner and "Waiting for you to switch on TakTak…" → "✓
+     You're all set — start typing" (with no restart; a short keycap-confetti celebration when
+     it happens while the window is open) and a hint where TakTak lives. When the button
+     answered `false` (TakTak not listed): "TakTak isn't in the list? Click + below it and choose
+     TakTak." When `relaunchSuggested`: "Almost there — TakTak needs a quick restart." (Windows and
+     Linux: "TakTak's key listener couldn't start. A restart usually fixes it.").
+  5. Small links under the status, collapsed by default: "Why?" (macOS: why Input Monitoring is
+     needed and the privacy promise "TakTak only notices that a key went down or up — never what
+     you type. Nothing is recorded, stored or sent anywhere.", plus the full offline sentence;
+     Linux: why the `input` group), "Having trouble?" (macOS while TakTak can't listen yet) and
+     "Later" (closes, like Done, while something is left to do).
+  6. "Having trouble?" opens by itself when `relaunchSuggested`, ~20 s after the user pressed
+     "Allow Input Monitoring" with permission still missing, or right away when that press
+     answered `false`. It holds: "TakTak isn't in the list? Click + below the list and choose
+     TakTak, or drag TakTak into the list." with "Show TakTak in Finder" (`reveal_app`); "On, but
+     still no sound? macOS may remember an older copy of TakTak. Remove TakTak with − and add it
+     again with +, or run `tccutil reset ListenEvent tech.taktak.app` in Terminal and reopen
+     TakTak" (with Copy); "Quit & Reopen" (unless it is already the main button); and the macOS
+     12 lock hint.
+  7. Linux without the `input` group: the command `sudo usermod -aG input $USER` with Copy, "Run
+     it in a terminal, then log out and back in." and its cost (always visible), then Done.
 - **Settings → About** (or General): "Show welcome guide" (`open_onboarding`).
 
 ## UI requirements (Milestone 5)
 
 - **"Fully offline", loud and clear.** The sentence "TakTak is fully offline — it never uses the
-  internet." appears, word for word (`src/lib/offline.ts`), in the onboarding window (a banner
-  right above the permission step or whatever card the window shows) and at the top of the
-  privacy box in Settings → About; the tray popover's footer shows the short form "Offline ·
+  internet." appears, word for word (`src/lib/offline.ts`), in the onboarding window (as the
+  tooltip of its badge "Fully offline · never uses the internet" and in its "Why?" disclosure)
+  and at the top of the privacy box in Settings → About; the tray popover's footer shows the short form "Offline ·
   never uses the internet" (the full sentence as its tooltip). The README and the website use
   the same sentence. It must stay true: no network code (CSP `connect-src` limited to IPC, and
   the CI offline guard, `npm run no-network`).
@@ -601,7 +617,10 @@ not part of this contract yet.
   after 4 s), `outputchange` (`muteOnOutputChange` on; 3 s in, the output moves to AirPods Pro)
   and `unsupported` (no per-app rules and no permission step, like Windows and Linux).
   **(M5)** `inputgroup` (Linux without the `input` group) and `listenerfail` (a Windows or Linux
-  listener that failed to start; `relaunch` fixes it after 1.5 s). The mock's
+  listener that failed to start; `relaunch` fixes it after 1.5 s). `unlisted` (like `denied`,
+  but macOS adds nothing to the Input Monitoring list: `open_permission_settings` answers `false`
+  until permission is granted, which happens 6 s after `reveal_app`, as if the user had added
+  TakTak by hand). `denied` answers `true`. The mock's
   `import_mechvibes_pack` answers in turn: an import (the pack is listed 0.7 s later), the same
   pack again (`alreadyImported`; `overwrite_mechvibes_pack` replaces it), a pack with no usable
   sounds (rejected) and a cancelled picker (`null`). The mock

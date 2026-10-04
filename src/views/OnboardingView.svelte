@@ -1,39 +1,38 @@
 <script lang="ts">
-  // The "Welcome to TakTak" window: what TakTak is and where it lives, that it is fully offline,
-  // then (macOS) the Input Monitoring step with its privacy promise, a live status that turns
-  // into success without a restart, "Quit & Reopen" when macOS wants a relaunch, and
-  // troubleshooting for a stale entry; (Linux, M5) the `input` group opt-in and its cost;
-  // (Windows, Linux) "Quit & Reopen" when the key listener failed to start.
-  // The steps are decided in onboarding.ts; nothing here reads what the user types.
+  // The "Welcome to TakTak" window, kept minimal: the keycap, one line, the offline badge, one big
+  // button and a live status. Everything else (why, privacy details, Quit & Reopen, adding
+  // TakTak by hand, the stale-entry fix) sits behind the small "Why?" and "Having trouble?"
+  // links, collapsed until asked for (or until the troubleshooting is clearly needed). Linux
+  // shows the `input` group opt-in and its cost instead; Windows and Linux lead with Quit &
+  // Reopen when the key listener failed. The steps and words are in onboarding.ts; nothing here
+  // reads what the user types.
   import Icon from '../components/Icon.svelte';
-  import Keycaps from '../components/Keycaps.svelte';
   import Logo from '../components/Logo.svelte';
   import Toast from '../components/Toast.svelte';
-  import { finishOnboarding, openPermissionSettings, relaunch } from '../lib/api';
+  import { finishOnboarding, openPermissionSettings, relaunch, revealApp } from '../lib/api';
   import { copyText } from '../lib/clipboard';
   import {
+    COPY,
     type OnboardingFacts,
     type OnboardingPhase,
     TCC_RESET_COMMAND,
     justGranted,
+    onboardingLine,
+    onboardingStatus,
     onboardingStep,
     troubleshootDelay,
   } from '../lib/onboarding';
-  import { OFFLINE } from '../lib/offline';
+  import { OFFLINE, OFFLINE_BADGE } from '../lib/offline';
   import { platform } from '../lib/platform';
-  import {
-    INPUT_GROUP_COMMAND,
-    INPUT_GROUP_COST,
-    INPUT_GROUP_WHY,
-    RELAUNCH_OTHER,
-    UNAVAILABLE,
-  } from '../lib/status';
+  import { INPUT_GROUP_COMMAND, INPUT_GROUP_COST, INPUT_GROUP_WHY, UNAVAILABLE } from '../lib/status';
   import { app, apply, run, showError } from '../lib/store.svelte';
 
   const s = $derived(app.state);
 
-  /** When the user pressed "Open Input Monitoring Settings" here. */
+  /** When the user pressed "Allow Input Monitoring" here. */
   let openedAt = $state<number | null>(null);
+  /** What that press answered: TakTak is in the Input Monitoring list (null: no answer yet). */
+  let listed = $state<boolean | null>(null);
   /** The clock as of the last re-evaluation (a one-shot timer moves it, nothing polls). */
   let now = $state(Date.now());
 
@@ -45,14 +44,17 @@
           relaunchSuggested: s.onboarding.relaunchSuggested,
           inputGroupNeeded: s.onboarding.inputGroupNeeded,
           openedAt,
+          listed,
           now,
         }
       : null,
   );
   const step = $derived(facts ? onboardingStep(facts) : null);
+  const status = $derived(facts ? onboardingStatus(facts) : null);
+  const line = $derived(facts ? onboardingLine(facts) : '');
   const phase = $derived(step?.phase ?? null);
 
-  // Open the troubleshooting by itself once the user has waited a while.
+  // Open "Having trouble?" by itself once the user has waited a while.
   $effect(() => {
     if (!facts) return;
     const delay = troubleshootDelay({ ...facts, now: Date.now() });
@@ -61,6 +63,7 @@
     return () => clearTimeout(timer);
   });
 
+  let whyOpen = $state(false);
   let troubleOpen = $state(false);
   $effect(() => {
     if (step?.troubleshoot) troubleOpen = true;
@@ -75,6 +78,7 @@
     previous = phase;
   });
 
+  let asking = $state(false);
   let relaunching = $state(false);
   let closing = $state(false);
   /** The command whose Copy button was pressed last, for 2 s. */
@@ -92,10 +96,17 @@
     return () => clearTimeout(timer);
   });
 
-  async function openSettings(): Promise<void> {
+  async function allow(): Promise<void> {
+    asking = true;
     openedAt = Date.now();
     now = openedAt;
-    await run(openPermissionSettings());
+    try {
+      // Takes up to a couple of seconds while macOS adds TakTak to the list.
+      const answer = await run(openPermissionSettings());
+      if (answer !== undefined) listed = answer;
+    } finally {
+      asking = false;
+    }
   }
 
   async function reopen(): Promise<void> {
@@ -135,253 +146,181 @@
   const PIECES = Array.from({ length: 10 }, (_, i) => i);
 
   $effect(() => {
-    document.title = 'Welcome to TakTak';
+    document.title = COPY.title;
   });
 </script>
+
+{#snippet copyable(command: string)}
+  <div class="command">
+    <code class="mono selectable">{command}</code>
+    <button
+      type="button"
+      class="btn small"
+      aria-label={copied === command ? 'Copied' : 'Copy the command'}
+      onclick={() => copyCommand(command)}
+    >
+      <Icon name={copied === command ? 'check' : 'copy'} size={12} />
+      {copied === command ? 'Copied' : 'Copy'}
+    </button>
+  </div>
+{/snippet}
 
 <div class="onboarding">
   <main class="content">
     <header class="hero">
-      <div class="logo" class:celebrate><Logo size={52} /></div>
-      <h1>Welcome to TakTak</h1>
-      <p class="lead">Mechanical keyboard sounds as you type, in every app.</p>
-      <p class="where">
-        TakTak lives in your {place}: look for the
-        <span class="inline-logo"><Logo size={14} /></span>
-        keycap{platform === 'mac' ? ' at the top of your screen' : ''}. Click it for volume and sound
-        packs; right-click it for a quick menu.
+      <div class="logo" class:celebrate><Logo size={64} /></div>
+      <h1>{COPY.title}</h1>
+      {#if s}<p class="line">{line}</p>{/if}
+      <p class="badge" title={OFFLINE}>
+        <Icon name="shield" size={12} /><span>{OFFLINE_BADGE}</span>
       </p>
     </header>
 
-    <p class="offline"><Icon name="shield" size={16} /><strong>{OFFLINE}</strong></p>
-
     {#if s && step}
-      {#if step.phase === 'welcome'}
-        <section class="card" aria-labelledby="ready-title">
-          <div class="status granted">
-            <span class="badge-check"><Icon name="check" size={18} /></span>
-            <div>
-              <h2 class="status-title" id="ready-title">You’re all set</h2>
-              <p class="status-hint">Start typing in any app to hear TakTak.</p>
-            </div>
+      {#if step.phase === 'inputGroup'}
+        <div class="opt-in">
+          {@render copyable(INPUT_GROUP_COMMAND)}
+          <p class="hint">Run it in a terminal, then log out and back in.</p>
+          <p class="caution">
+            <span class="caution-icon"><Icon name="warning" size={14} /></span>
+            <span>{INPUT_GROUP_COST}</span>
+          </p>
+        </div>
+      {/if}
+
+      <div class="action">
+        {#if step.action === 'allow'}
+          <button type="button" class="btn primary big" disabled={asking} onclick={allow}>
+            {COPY.allow}
+          </button>
+        {:else if step.action === 'reopen'}
+          <button type="button" class="btn primary big" disabled={relaunching} onclick={reopen}>
+            <Icon name="restart" size={14} />{relaunching ? COPY.reopening : COPY.reopen}
+          </button>
+        {:else}
+          <button type="button" class="btn primary big" disabled={closing} onclick={close}>
+            {COPY.done}
+          </button>
+        {/if}
+      </div>
+
+      <div class="live" aria-live="polite">
+        {#if status}
+          <div class="status {status.tone}" role="status">
+            {#if status.tone === 'ok'}
+              <span class="badge-check" class:pop={celebrate}>
+                <Icon name="check" size={14} />
+                {#if celebrate}
+                  <span class="confetti" aria-hidden="true">
+                    {#each PIECES as i (i)}<span class="piece" style:--i={i}></span>{/each}
+                  </span>
+                {/if}
+              </span>
+            {:else if status.tone === 'waiting'}
+              <span class="spinner" aria-hidden="true"></span>
+            {:else if status.tone === 'warn'}
+              <span class="status-icon"><Icon name="warning" size={14} /></span>
+            {:else if status.tone === 'info'}
+              <span class="status-icon"><Icon name="info" size={14} /></span>
+            {/if}
+            <span>{status.text}</span>
           </div>
-          {#if s.settings.muteHotkey}
-            <p class="tip">
-              Mute or unmute any time with <Keycaps accelerator={s.settings.muteHotkey} small />
+          {#if status.tone === 'ok'}
+            <p class="hint where">
+              TakTak lives in your {place}: look for the
+              <span class="inline-logo"><Logo size={13} /></span> keycap.
             </p>
+          {:else if step.phase === 'unavailable'}
+            <p class="hint">{UNAVAILABLE}</p>
           {/if}
-        </section>
-      {:else if step.phase === 'unavailable'}
-        <section class="card" aria-labelledby="unavailable-title">
-          <div class="status">
-            <span class="status-icon info"><Icon name="info" size={18} /></span>
-            <div>
-              <h2 class="status-title" id="unavailable-title">Key sounds are turned off</h2>
-              <p class="status-hint">{UNAVAILABLE}</p>
-            </div>
-          </div>
-        </section>
-      {:else if step.phase === 'inputGroup'}
-        <section class="card" aria-labelledby="group-title">
-          <h2 class="card-title" id="group-title">Allow keyboard access</h2>
-          <p class="why">{INPUT_GROUP_WHY}</p>
-          <div class="command group-command">
-            <code class="mono selectable">{INPUT_GROUP_COMMAND}</code>
+        {/if}
+      </div>
+
+      {#if step.whyAvailable || step.troubleshootAvailable || step.later}
+        <nav class="links" aria-label="More">
+          {#if step.whyAvailable}
             <button
               type="button"
-              class="btn small"
-              aria-label={copied === INPUT_GROUP_COMMAND ? 'Copied' : 'Copy the command'}
-              onclick={() => copyCommand(INPUT_GROUP_COMMAND)}
+              class="link"
+              aria-expanded={whyOpen}
+              aria-controls="why"
+              onclick={() => (whyOpen = !whyOpen)}
             >
-              <Icon name={copied === INPUT_GROUP_COMMAND ? 'check' : 'copy'} size={12} />
-              {copied === INPUT_GROUP_COMMAND ? 'Copied' : 'Copy'}
+              {COPY.why}
             </button>
-          </div>
-          <p class="step-hint group-hint">
-            Run it in a terminal. Once you have logged back in, TakTak hears your keys the next
-            time it starts.
-          </p>
-          <div class="caution">
-            <span class="caution-icon"><Icon name="warning" size={16} /></span>
-            <p>{INPUT_GROUP_COST}</p>
-          </div>
-          <p class="step-hint group-hint">
-            Prefer not to? Key sounds stay off, and everything else works. On an X11 session TakTak
-            needs no extra access.
-          </p>
-        </section>
-      {:else if step.phase === 'relaunch' && !s.onboarding.permissionRequired}
-        <section class="card" aria-labelledby="restart-title">
-          <div class="status relaunch" role="status">
-            <span class="status-icon"><Icon name="restart" size={18} /></span>
-            <div>
-              <h2 class="status-title" id="restart-title">TakTak needs to restart</h2>
-              <p class="status-hint">{RELAUNCH_OTHER}</p>
-            </div>
-          </div>
-          <button type="button" class="btn primary wide" disabled={relaunching} onclick={reopen}>
-            <Icon name="restart" size={14} />{relaunching ? 'Reopening…' : 'Quit & Reopen'}
-          </button>
-        </section>
-      {:else}
-        <section class="card" aria-labelledby="perm-title">
-          <h2 class="card-title" id="perm-title">Allow Input Monitoring</h2>
-          <p class="why">
-            macOS asks you to allow Input Monitoring for any app that notices key presses outside
-            its own windows.
-          </p>
-          <div class="promise">
-            <span class="promise-icon"><Icon name="shield" size={18} /></span>
+          {/if}
+          {#if step.troubleshootAvailable}
+            <button
+              type="button"
+              class="link"
+              aria-expanded={troubleOpen}
+              aria-controls="trouble"
+              onclick={() => (troubleOpen = !troubleOpen)}
+            >
+              {COPY.trouble}
+            </button>
+          {/if}
+          {#if step.later}
+            <button type="button" class="link" disabled={closing} onclick={close}>
+              {COPY.later}
+            </button>
+          {/if}
+        </nav>
+      {/if}
+
+      {#if step.whyAvailable && whyOpen}
+        <section class="panel" id="why" aria-label="Why">
+          {#if step.phase === 'inputGroup'}
+            <p>{INPUT_GROUP_WHY}</p>
+            <p>Prefer not to? Key sounds stay off; everything else works.</p>
+          {:else}
+            <p>
+              macOS asks you to allow Input Monitoring for any app that notices key presses outside
+              its own windows.
+            </p>
             <p>
               TakTak only notices that a key went down or up — never what you type. Nothing is
-              recorded, stored or sent anywhere, and TakTak never uses the internet.
+              recorded, stored or sent anywhere.
             </p>
-          </div>
-
-          <div class="live" aria-live="polite">
-            {#if step.phase === 'granted'}
-              <div class="status granted" role="status">
-                <span class="badge-check" class:pop={celebrate}>
-                  <Icon name="check" size={18} />
-                  {#if celebrate}
-                    <span class="confetti" aria-hidden="true">
-                      {#each PIECES as i (i)}<span class="piece" style:--i={i}></span>{/each}
-                    </span>
-                  {/if}
-                </span>
-                <div>
-                  <p class="status-title">TakTak can hear your keys. Try typing!</p>
-                  <p class="status-hint">
-                    Start typing in any app: every key you press makes a sound.
-                  </p>
-                </div>
-              </div>
-              {#if s.settings.muteHotkey}
-                <p class="tip">
-                  Mute or unmute any time with <Keycaps accelerator={s.settings.muteHotkey} small />
-                </p>
-              {/if}
-            {:else if step.phase === 'relaunch'}
-              <div class="status relaunch" role="status">
-                <span class="status-icon"><Icon name="restart" size={18} /></span>
-                <div>
-                  <p class="status-title">macOS needs TakTak to restart before it can listen.</p>
-                  <p class="status-hint">Input Monitoring is on. Your settings are kept.</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                class="btn primary wide"
-                disabled={relaunching}
-                onclick={reopen}
-              >
-                <Icon name="restart" size={14} />{relaunching ? 'Reopening…' : 'Quit & Reopen'}
-              </button>
-            {:else}
-              <ol class="steps">
-                <li>
-                  <span class="num" aria-hidden="true">1</span>
-                  <div class="step-body with-button">
-                    <button type="button" class="btn primary" onclick={openSettings}>
-                      Open Input Monitoring Settings
-                    </button>
-                    {#if step.phase === 'ask'}
-                      <span class="step-hint">
-                        If macOS asks first, choose Open System Settings (Open System Preferences
-                        on macOS 12 and earlier).
-                      </span>
-                    {/if}
-                  </div>
-                </li>
-                <li>
-                  <span class="num" aria-hidden="true">2</span>
-                  <p class="step-body">
-                    Turn on <strong>TakTak</strong> in the list. On macOS 12 and earlier, click the
-                    lock at the bottom first to make changes.
-                  </p>
-                </li>
-                <li>
-                  <span class="num" aria-hidden="true">3</span>
-                  <p class="step-body">
-                    Come back here. If macOS offers to <strong>Quit &amp; Reopen</strong> TakTak,
-                    either choice works: choose Later and this window usually notices by itself;
-                    if it doesn’t, it offers Quit &amp; Reopen too.
-                  </p>
-                </li>
-              </ol>
-              <div class="status waiting" role="status">
-                {#if step.phase === 'waiting'}
-                  <span class="spinner" aria-hidden="true"></span>
-                  <p class="status-title">Waiting for Input Monitoring…</p>
-                {:else}
-                  <span class="status-icon warn"><Icon name="warning" size={16} /></span>
-                  <p class="status-title">Input Monitoring isn’t allowed yet.</p>
-                {/if}
-              </div>
-            {/if}
-          </div>
+          {/if}
+          <p>{OFFLINE}</p>
         </section>
+      {/if}
 
-        {#if step.troubleshootAvailable}
-          <details class="trouble" bind:open={troubleOpen}>
-            <summary>
-              <span class="chevron"><Icon name="chevron" size={12} /></span>
-              TakTak is on in the list but still can’t hear keys?
-            </summary>
-            <div class="trouble-body">
-              <p>
-                macOS may be holding on to an entry from an older copy of TakTak. Select TakTak in
-                the list and remove it with <kbd>−</kbd>, then add it again with <kbd>+</kbd> (it is
-                in Applications). On macOS 12 and earlier, click the lock first to make changes.
-              </p>
-              <p>Or run this in Terminal, then open TakTak again:</p>
-              <div class="command">
-                <code class="mono selectable">{TCC_RESET_COMMAND}</code>
-                <button
-                  type="button"
-                  class="btn small"
-                  aria-label={copied === TCC_RESET_COMMAND ? 'Copied' : 'Copy the command'}
-                  onclick={() => copyCommand(TCC_RESET_COMMAND)}
-                >
-                  <Icon name={copied === TCC_RESET_COMMAND ? 'check' : 'copy'} size={12} />
-                  {copied === TCC_RESET_COMMAND ? 'Copied' : 'Copy'}
-                </button>
-              </div>
-              {#if step.phase !== 'relaunch'}
-                <div class="trouble-actions">
-                  <button type="button" class="btn" disabled={relaunching} onclick={reopen}>
-                    <Icon name="restart" size={14} />{relaunching ? 'Reopening…' : 'Quit & Reopen'}
-                  </button>
-                  <span class="step-hint">
-                    Sometimes macOS only lets a freshly opened TakTak listen.
-                  </span>
-                </div>
-              {/if}
+      {#if step.troubleshootAvailable && troubleOpen}
+        <section class="panel" id="trouble" aria-label="Having trouble?">
+          <h2>TakTak isn’t in the list?</h2>
+          <p>
+            Click <kbd>+</kbd> below the list and choose TakTak, or drag TakTak into the list.
+          </p>
+          <div class="row">
+            <button type="button" class="btn small" onclick={() => run(revealApp())}>
+              <Icon name="folder" size={12} />Show TakTak in Finder
+            </button>
+          </div>
+          <h2>On, but still no sound?</h2>
+          <p>
+            macOS may remember an older copy of TakTak. Remove TakTak with <kbd>−</kbd> and add it
+            again with <kbd>+</kbd>, or run this in Terminal and reopen TakTak:
+          </p>
+          {@render copyable(TCC_RESET_COMMAND)}
+          {#if step.action !== 'reopen'}
+            <div class="row">
+              <button type="button" class="btn small" disabled={relaunching} onclick={reopen}>
+                <Icon name="restart" size={12} />{relaunching ? COPY.reopening : COPY.reopen}
+              </button>
+              <span class="hint">Sometimes macOS only lets a freshly opened TakTak listen.</span>
             </div>
-          </details>
-        {/if}
+          {/if}
+          <p class="hint">On macOS 12 or earlier, click the lock first to make changes.</p>
+        </section>
       {/if}
     {:else if !app.error}
       <p class="loading" aria-busy="true">Loading…</p>
     {/if}
   </main>
 
-  <footer class="footer">
-    {#if step && !step.closePrimary && s?.onboarding.permissionRequired}
-      <p class="footer-hint">TakTak reminds you the next time it starts.</p>
-    {/if}
-    <button
-      type="button"
-      class="btn"
-      class:primary={step?.closePrimary ?? false}
-      disabled={!s || closing}
-      onclick={close}
-    >
-      {step?.closeLabel ?? 'Later'}
-    </button>
-  </footer>
-
-  <Toast bottom={64} />
+  <Toast bottom={16} />
 </div>
 
 <style>
@@ -396,7 +335,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 22px 36px 16px;
+    padding: 28px 40px 24px;
   }
 
   .hero {
@@ -415,212 +354,96 @@
   }
 
   h1 {
-    margin-top: 10px;
+    margin-top: 14px;
     font-size: 22px;
     font-weight: 700;
     line-height: 1.2;
   }
 
-  .lead {
-    margin-top: 4px;
+  .line {
+    max-width: 360px;
+    margin-top: 8px;
+    color: var(--text-2);
     font-size: 14px;
+    line-height: 1.45;
   }
 
-  .where {
-    max-width: 420px;
-    margin-top: 10px;
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+
+  .action {
+    display: flex;
+    justify-content: center;
+    margin-top: 22px;
+  }
+
+  .btn.big {
+    min-width: 240px;
+    height: 36px;
+    padding: 0 20px;
+    border-radius: var(--radius-m);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .live {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-height: 34px;
+    margin-top: 12px;
+    text-align: center;
+  }
+
+  .status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-2);
+  }
+
+  .status.ok {
+    color: var(--ok-text);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .status.warn {
+    color: var(--warning-text);
+    font-weight: 500;
+  }
+
+  .status-icon {
+    display: inline-flex;
+  }
+
+  .status.warn .status-icon {
+    color: var(--warning);
+  }
+
+  .hint {
     color: var(--text-2);
     font-size: 12px;
-    line-height: 1.5;
+  }
+
+  .live .hint {
+    margin-top: 4px;
+    max-width: 360px;
   }
 
   .inline-logo {
     display: inline-block;
     vertical-align: -2px;
-  }
-
-  .offline {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 14px;
-    padding: 8px 12px;
-    border-radius: var(--radius-m);
-    background: var(--accent-soft);
-    color: var(--accent-text);
-    font-size: 13px;
-    text-align: center;
-  }
-
-  .offline strong {
-    font-weight: 650;
-  }
-
-  .group-command {
-    margin-top: 12px;
-  }
-
-  .group-hint {
-    margin-top: 6px;
-  }
-
-  .caution {
-    display: flex;
-    gap: 10px;
-    margin-top: 12px;
-    padding: 10px 12px;
-    border-radius: var(--radius-m);
-    background: var(--warning-bg);
-    color: var(--warning-text);
-  }
-
-  .caution-icon {
-    padding-top: 1px;
-  }
-
-  .caution p {
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .card {
-    margin-top: 16px;
-    padding: 16px 20px;
-    border-radius: var(--radius-l);
-    background: var(--surface);
-    box-shadow: var(--card-shadow);
-  }
-
-  .card-title {
-    font-size: 15px;
-    font-weight: 650;
-  }
-
-  .why {
-    margin-top: 4px;
-    color: var(--text-2);
-  }
-
-  .promise {
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
-    padding: 10px 12px;
-    border-radius: var(--radius-m);
-    background: var(--accent-soft);
-  }
-
-  .promise-icon {
-    padding-top: 1px;
-    color: var(--accent-text);
-  }
-
-  .promise p {
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .live {
-    margin-top: 14px;
-  }
-
-  .steps {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .steps li {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-
-  .num {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 22px;
-    height: 22px;
-    margin-top: 2px;
-    border-radius: 50%;
-    background: var(--surface-2);
-    color: var(--text-2);
-    font-size: 12px;
-    font-weight: 600;
-  }
-
-  .step-body {
-    padding-top: 3px;
-  }
-
-  .step-body.with-button {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    padding-top: 0;
-  }
-
-  .step-hint {
-    color: var(--text-2);
-    font-size: 12px;
-  }
-
-  .status {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 14px;
-    padding: 10px 12px;
-    border-radius: var(--radius-m);
-    background: var(--surface-2);
-  }
-
-  .steps + .status {
-    margin-top: 12px;
-  }
-
-  .live > .status:first-child,
-  .card > .status:first-child {
-    margin-top: 0;
-  }
-
-  .status.granted {
-    background: var(--ok-bg);
-  }
-
-  .status.relaunch {
-    background: var(--warning-bg);
-  }
-
-  .status-title {
-    font-weight: 600;
-  }
-
-  h2.status-title {
-    font-size: 13px;
-  }
-
-  .status-hint {
-    margin-top: 1px;
-    color: var(--text-2);
-    font-size: 12px;
-  }
-
-  .status-icon {
-    display: inline-flex;
-    color: var(--warning);
-  }
-
-  .status-icon.info {
-    color: var(--text-2);
-  }
-
-  .relaunch .status-icon {
-    color: var(--warning-text);
   }
 
   .badge-check {
@@ -629,8 +452,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 30px;
-    height: 30px;
+    width: 22px;
+    height: 22px;
     border-radius: 50%;
     background: var(--ok);
     color: #fff;
@@ -652,9 +475,9 @@
     position: absolute;
     top: 50%;
     left: 50%;
-    width: 7px;
-    height: 7px;
-    margin: -3.5px 0 0 -3.5px;
+    width: 6px;
+    height: 6px;
+    margin: -3px 0 0 -3px;
     border-radius: 2px;
     background: var(--accent);
     opacity: 0;
@@ -669,76 +492,98 @@
     background: var(--ok);
   }
 
-  .tip {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 10px;
-    color: var(--text-2);
-    font-size: 12px;
-  }
-
-  .btn.wide {
-    width: 100%;
-    height: 32px;
-    margin-top: 10px;
-  }
-
   .spinner {
     flex: none;
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     border: 2px solid var(--track);
     border-top-color: var(--accent);
     animation: spin 0.9s linear infinite;
   }
 
-  .trouble {
-    margin-top: 12px;
-    border-radius: var(--radius-l);
-    background: var(--surface);
-    box-shadow: var(--card-shadow);
-  }
-
-  summary {
+  .links {
     display: flex;
-    align-items: center;
-    gap: 8px;
-    min-height: 40px;
-    padding: 8px 16px;
-    border-radius: var(--radius-l);
-    font-weight: 500;
-    list-style: none;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px 18px;
+    margin-top: 14px;
   }
 
-  summary::-webkit-details-marker {
-    display: none;
-  }
-
-  summary:hover {
-    background: var(--hover);
-  }
-
-  .chevron {
-    display: inline-flex;
+  .link {
+    padding: 2px 4px;
+    border: 0;
+    border-radius: 4px;
+    background: none;
     color: var(--text-2);
-    transition: transform 0.15s;
+    font-size: 12px;
+    text-decoration: underline;
+    text-decoration-color: var(--border);
+    text-underline-offset: 3px;
   }
 
-  .trouble[open] .chevron {
-    transform: rotate(90deg);
+  .link:hover:not(:disabled),
+  .link[aria-expanded='true'] {
+    color: var(--text);
+    text-decoration-color: currentColor;
   }
 
-  .trouble-body {
+  .link:disabled {
+    opacity: 0.45;
+  }
+
+  .panel {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    padding: 0 16px 14px 36px;
+    margin-top: 12px;
+    padding: 14px 16px;
+    border-radius: var(--radius-l);
+    background: var(--surface);
+    box-shadow: var(--card-shadow);
     color: var(--text-2);
     font-size: 12px;
     line-height: 1.45;
+  }
+
+  .panel h2 {
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  .panel h2:not(:first-child) {
+    margin-top: 4px;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .opt-in {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 20px;
+  }
+
+  .caution {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: var(--radius-m);
+    background: var(--warning-bg);
+    color: var(--warning-text);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .caution-icon {
+    display: inline-flex;
+    padding-top: 1px;
   }
 
   kbd {
@@ -770,39 +615,19 @@
     overflow-wrap: anywhere;
   }
 
-  .trouble-actions {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 2px;
-  }
-
   .loading {
     margin-top: 24px;
     color: var(--text-2);
     text-align: center;
   }
 
-  .footer {
-    flex: none;
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 12px 20px;
-    border-top: 0.5px solid var(--separator);
-    background: var(--bg);
-  }
-
-  .footer-hint {
-    flex: 1;
-    color: var(--text-2);
-    font-size: 12px;
-  }
-
-  .footer .btn {
-    min-width: 88px;
+  @media (prefers-reduced-motion: reduce) {
+    .logo.celebrate,
+    .badge-check.pop,
+    .piece,
+    .spinner {
+      animation: none;
+    }
   }
 
   @keyframes press {
@@ -824,7 +649,7 @@
     }
     100% {
       opacity: 0;
-      transform: rotate(var(--angle)) translateY(-34px) rotate(140deg);
+      transform: rotate(var(--angle)) translateY(-30px) rotate(140deg);
     }
   }
 

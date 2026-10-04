@@ -14,7 +14,10 @@ use crate::settings::unit;
 use crate::state::{
     AppInfo, AppRuleMode, AppState, LatencyReport, MechvibesImport, PickKind, VariantMode,
 };
-use crate::{apps, automute, hotkey, mechvibes, relaunch as restart, rules, system, tray, windows};
+use crate::{
+    apps, automute, hotkey, mechvibes, permission, relaunch as restart, rules, system, tray,
+    windows,
+};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -171,18 +174,35 @@ pub async fn open_user_packs_dir(service: State<'_, Service>) -> CmdResult<()> {
     })
 }
 
-/// macOS: first asks macOS to list TakTak under Input Monitoring (its own prompt shows the
-/// first time only; TakTak never prompts at startup), then opens that pane.
+/// macOS: asks macOS to list TakTak under Input Monitoring if it never decided (on the main
+/// thread, waiting for the entry to appear: see [`permission`]), then opens that pane unless the
+/// request granted access. Resolves with whether TakTak is in the list (true elsewhere).
 #[tauri::command]
-pub async fn open_permission_settings() -> CmdResult<()> {
-    if taktak_core::input::request_permission() {
-        log::debug!("Input Monitoring is already granted");
+pub async fn open_permission_settings<R: Runtime>(app: AppHandle<R>) -> CmdResult<bool> {
+    let handle = app.clone();
+    let outcome = tauri::async_runtime::spawn_blocking(move || permission::ask(&handle))
+        .await
+        .map_err(|e| format!("Could not ask macOS for Input Monitoring: {e}"))?;
+    if outcome.open_pane {
+        system::open_input_monitoring().map_err(|e| {
+            log::warn!("cannot open the Input Monitoring settings: {e}");
+            "Could not open System Settings (System Preferences on macOS 12 and earlier). Open \
+             Privacy & Security → Input Monitoring there."
+                .to_owned()
+        })?;
     }
-    system::open_input_monitoring().map_err(|e| {
-        log::warn!("cannot open the Input Monitoring settings: {e}");
-        "Could not open System Settings (System Preferences on macOS 12 and earlier). Open \
-         Privacy & Security → Input Monitoring there."
-            .to_owned()
+    Ok(outcome.listed)
+}
+
+/// Shows TakTak itself (macOS: `TakTak.app`) in the file manager, to drag it into the Input
+/// Monitoring list or find it from its + button.
+#[tauri::command]
+pub async fn reveal_app() -> CmdResult<()> {
+    let exe = std::env::current_exe().map_err(|e| format!("Could not find TakTak: {e}"))?;
+    let target = restart::bundle_of(&exe).unwrap_or(exe);
+    system::reveal_file(&target).map_err(|e| {
+        log::warn!("cannot reveal {}: {e}", target.display());
+        format!("Could not show {}: {e}", target.display())
     })
 }
 

@@ -6,7 +6,7 @@
 //! layout/TIS API, so no characters are ever produced.
 
 use super::keymap_macos::{from_virtual_keycode, modifier_held_mask};
-use super::{InputError, KeyAction, KeyEvent, PressState};
+use super::{Access, InputError, KeyAction, KeyEvent, PressState};
 use crate::clock;
 use std::ffi::c_void;
 use std::sync::Arc;
@@ -62,6 +62,18 @@ unsafe extern "C" {
     fn CGRequestListenEventAccess() -> bool;
 }
 
+/// `kIOHIDRequestTypeListenEvent` (IOKit/hidsystem/IOHIDLib.h).
+const K_IOHID_REQUEST_TYPE_LISTEN_EVENT: u32 = 1;
+
+// Both since macOS 10.15. `IOHIDRequestAccess` for listening is what adds TakTak to Privacy &
+// Security → Input Monitoring (macOS shows its alert, which also creates the entry, switched
+// off); `IOHIDCheckAccess` tells "listed but off" (denied) from "not listed" (unknown).
+#[link(name = "IOKit", kind = "framework")]
+unsafe extern "C" {
+    fn IOHIDCheckAccess(request_type: u32) -> u32;
+    fn IOHIDRequestAccess(request_type: u32) -> bool;
+}
+
 #[link(name = "CoreFoundation", kind = "framework")]
 unsafe extern "C" {
     static kCFRunLoopDefaultMode: CFStringRef;
@@ -83,7 +95,20 @@ pub fn preflight() -> bool {
     unsafe { CGPreflightListenEventAccess() }
 }
 
+/// Never prompts.
+pub fn access() -> Access {
+    let raw = unsafe { IOHIDCheckAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT) };
+    super::access_from_iohid(raw, preflight)
+}
+
+/// May show macOS's Input Monitoring alert (not always: see docs/platform-notes.md § macOS).
 pub fn request() -> bool {
+    let granted = unsafe { IOHIDRequestAccess(K_IOHID_REQUEST_TYPE_LISTEN_EVENT) };
+    granted || preflight()
+}
+
+/// The CoreGraphics form of [`request`], kept as a fallback.
+pub fn request_fallback() -> bool {
     unsafe { CGRequestListenEventAccess() }
 }
 

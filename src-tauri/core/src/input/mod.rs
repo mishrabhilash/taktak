@@ -144,9 +144,60 @@ pub fn has_permission() -> bool {
     }
 }
 
+/// Where the OS stands on letting us listen. Never prompts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Access {
+    Granted,
+    /// Refused, or (macOS) TakTak is listed under Input Monitoring with its switch off.
+    Denied,
+    /// macOS: never decided. TakTak is not in the Input Monitoring list at all.
+    Undetermined,
+}
+
+/// macOS `IOHIDAccessType` values, as returned by `IOHIDCheckAccess`.
+#[cfg(any(target_os = "macos", test))]
+const IOHID_ACCESS_GRANTED: u32 = 0;
+#[cfg(any(target_os = "macos", test))]
+const IOHID_ACCESS_DENIED: u32 = 1;
+
+/// Maps an `IOHIDCheckAccess` result. `preflight` (`CGPreflightListenEventAccess`) settles the
+/// unexpected cases: anything that is neither granted nor denied counts as undetermined unless
+/// CoreGraphics says granted.
+#[cfg(any(target_os = "macos", test))]
+fn access_from_iohid(raw: u32, preflight: impl FnOnce() -> bool) -> Access {
+    match raw {
+        IOHID_ACCESS_GRANTED => Access::Granted,
+        _ if preflight() => Access::Granted,
+        IOHID_ACCESS_DENIED => Access::Denied,
+        _ => Access::Undetermined,
+    }
+}
+
+/// Whether to repeat a request through CoreGraphics (`CGRequestListenEventAccess`) after the IOKit
+/// one: only when, after waiting for it to settle, the system still has no record of TakTak.
+/// Both reach the same TCC service, so this never asks about something already answered.
+pub fn needs_fallback_request(after_iohid: Access) -> bool {
+    after_iohid == Access::Undetermined
+}
+
+/// Where the OS stands ([`Access`]). Never prompts. macOS: `IOHIDCheckAccess` for listening
+/// (distinguishes "listed but off" from "not listed"). Elsewhere: [`has_permission`], as
+/// granted or denied (there is nothing to decide).
+pub fn access() -> Access {
+    #[cfg(target_os = "macos")]
+    {
+        macos::access()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        if has_permission() { Access::Granted } else { Access::Denied }
+    }
+}
+
 /// Asks the OS for permission, showing its prompt if it has not been answered before.
-/// Returns whether permission is granted right now. Only macOS has a prompt; elsewhere this
-/// is [`has_permission`].
+/// Returns whether permission is granted right now. Only macOS has a prompt
+/// (`IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)`, which makes macOS list TakTak under
+/// Input Monitoring); elsewhere this is [`has_permission`]. macOS: call it on the main thread.
 pub fn request_permission() -> bool {
     #[cfg(target_os = "macos")]
     {
@@ -159,6 +210,20 @@ pub fn request_permission() -> bool {
     #[cfg(not(any(target_os = "macos", target_os = "linux")))]
     {
         true
+    }
+}
+
+/// [`request_permission`] through the older CoreGraphics call (`CGRequestListenEventAccess`),
+/// for when the IOKit request left no trace ([`needs_fallback_request`]). Same as
+/// [`request_permission`] outside macOS.
+pub fn request_permission_fallback() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        macos::request_fallback()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        request_permission()
     }
 }
 
@@ -204,6 +269,25 @@ impl PressState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn iohid_access_maps_to_access() {
+        assert_eq!(access_from_iohid(IOHID_ACCESS_GRANTED, || false), Access::Granted);
+        assert_eq!(access_from_iohid(IOHID_ACCESS_DENIED, || false), Access::Denied);
+        assert_eq!(access_from_iohid(2, || false), Access::Undetermined);
+        // CoreGraphics saying granted wins over anything IOKit cannot place.
+        assert_eq!(access_from_iohid(2, || true), Access::Granted);
+        assert_eq!(access_from_iohid(7, || false), Access::Undetermined);
+        // Granted never needs the preflight.
+        assert_eq!(access_from_iohid(IOHID_ACCESS_GRANTED, || unreachable!()), Access::Granted);
+    }
+
+    #[test]
+    fn falls_back_only_when_nothing_was_recorded() {
+        assert!(needs_fallback_request(Access::Undetermined));
+        assert!(!needs_fallback_request(Access::Denied), "listed: the prompt was shown");
+        assert!(!needs_fallback_request(Access::Granted));
+    }
 
     #[test]
     fn auto_repeat_plays_once() {

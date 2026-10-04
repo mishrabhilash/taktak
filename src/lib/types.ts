@@ -243,7 +243,8 @@ export interface Commands {
   open_settings: { args: void; result: void };
   hide_tray: { args: void; result: void };
   open_user_packs_dir: { args: void; result: void };
-  open_permission_settings: { args: void; result: void };
+  /** Resolves with whether TakTak is in the Input Monitoring list (true where there is none). */
+  open_permission_settings: { args: void; result: boolean };
   get_latency: { args: void; result: LatencyReport | null };
   quit: { args: void; result: void };
   // Milestone 4
@@ -260,6 +261,7 @@ export interface Commands {
   // Milestone 5
   import_mechvibes_pack: { args: { kind: PickKind }; result: MechvibesImport | null };
   overwrite_mechvibes_pack: { args: void; result: MechvibesImport };
+  reveal_app: { args: void; result: void };
 }
 
 export type Command = keyof Commands;

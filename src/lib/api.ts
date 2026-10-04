@@ -108,7 +108,12 @@ export const openSettings = (): Promise<void> => call('open_settings');
 /** Hides the tray popover (Escape); on macOS it also hands the keyboard back. */
 export const hideTray = (): Promise<void> => call('hide_tray');
 export const openUserPacksDir = (): Promise<void> => call('open_user_packs_dir');
-export const openPermissionSettings = (): Promise<void> => call('open_permission_settings');
+/**
+ * macOS: asks macOS to list TakTak under Input Monitoring (if it never decided), then opens that
+ * pane. Resolves with whether TakTak is in the list now: false when macOS added nothing (the
+ * user then adds it with +, see `revealApp`). Always true elsewhere.
+ */
+export const openPermissionSettings = (): Promise<boolean> => call('open_permission_settings');
 /** null until 5 presses have been measured since the window opened. */
 export const getLatency = (): Promise<LatencyReport | null> => call('get_latency');
 export const quit = (): Promise<void> => call('quit');
@@ -149,3 +154,6 @@ export const importMechvibesPack = (kind: PickKind): Promise<MechvibesImport | n
 /** Replaces the earlier import the last `importMechvibesPack` reported as "alreadyImported". */
 export const overwriteMechvibesPack = (): Promise<MechvibesImport> =>
   call('overwrite_mechvibes_pack');
+
+/** Shows TakTak itself (macOS: TakTak.app) in Finder, to drag it into the Input Monitoring list. */
+export const revealApp = (): Promise<void> => call('reveal_app');

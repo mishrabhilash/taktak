@@ -1354,7 +1354,7 @@ impl Control {
 
     // --- input ------------------------------------------------------------------------------
 
-    /// Checks Input Monitoring (never prompts: `open_permission_settings` asks macOS to list
+    /// Checks Input Monitoring (never prompts: [`crate::permission`] asks macOS to list
     /// TakTak). The first check is logged either way, later changes when they happen.
     fn poll_permission(&mut self, now: Instant) {
         let first = self.permission.first();

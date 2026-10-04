@@ -7,3 +7,6 @@ export const OFFLINE = 'TakTak is fully offline — it never uses the internet.'
 
 /** The short form, for the tray popover. */
 export const OFFLINE_SHORT = 'Offline · never uses the internet';
+
+/** The welcome window's badge (the full sentence is its tooltip and is said under "Why?"). */
+export const OFFLINE_BADGE = 'Fully offline · never uses the internet';

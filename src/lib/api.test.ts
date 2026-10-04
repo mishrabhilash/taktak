@@ -79,10 +79,14 @@ describe('api (mock backend)', () => {
     await expect(api.openSettings()).resolves.toBeUndefined();
     await expect(api.hideTray()).resolves.toBeUndefined();
     await expect(api.openUserPacksDir()).resolves.toBeUndefined();
-    await expect(api.openPermissionSettings()).resolves.toBeUndefined();
+    await expect(api.revealApp()).resolves.toBeUndefined();
     await expect(api.quit()).resolves.toBeUndefined();
     await expect(api.openOnboarding()).resolves.toBeUndefined();
     await expect(api.relaunch()).resolves.toBeUndefined();
+  });
+
+  it('open_permission_settings says whether TakTak is in the Input Monitoring list', async () => {
+    await expect(api.openPermissionSettings()).resolves.toBe(true);
   });
 
   it('get_latency starts out null', async () => {

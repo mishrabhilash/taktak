@@ -4,8 +4,8 @@
 //! The hook callback runs on `taktak-input` and must never block, allocate, lock or log: it
 //! loads one atomic and pushes into a wait-free ring. Nothing here looks at which key it was.
 //!
-//! Checking never prompts: the onboarding window explains the permission first, and its button
-//! (`open_permission_settings`) is what asks macOS to list TakTak.
+//! Checking never prompts. Asking macOS to list TakTak is [`crate::permission`]'s job: the
+//! onboarding window's button (`open_permission_settings`), and once when that window appears.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

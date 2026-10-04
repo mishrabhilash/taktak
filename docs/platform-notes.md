@@ -7,7 +7,9 @@ as macOS: `input::start` runs the hook on a dedicated `taktak-input` thread, the
 one `Down` and one `Up` per physical press (auto-repeat and stray ups filtered by
 `PressState`), and dropping the `Listener` stops and joins the thread. Per-app rules are still
 kept but unsupported there (`rulesSupported` is false). The macOS side is described in
-[`app.md`](app.md) and the overall limits table in [`architecture.md`](architecture.md).
+[`app.md`](app.md) and the overall limits table in [`architecture.md`](architecture.md); one
+macOS permission quirk that shapes the welcome window is recorded under
+[macOS: Input Monitoring](#macos-input-monitoring).
 
 Whatever the platform, the listener only ever reads which physical key went down or up. No
 characters, no keyboard layout lookups, nothing logged, stored or sent. The native codes are
@@ -226,11 +228,51 @@ X11 → evdev fallback, the `PermissionDenied` path and evdev hotplug.
   apps on most hardware. Not a good default.
 - **Bluetooth** output adds 100–250 ms, as elsewhere.
 
+## macOS: Input Monitoring
+
+How TakTak gets into Privacy & Security → Input Monitoring, as observed on macOS 26 (Tahoe) in
+the unified log (`log show --predicate 'process == "tccd"'`); the code is
+`src-tauri/src/permission.rs` and `core/src/input/macos.rs`.
+
+- `IOHIDCheckAccess(kIOHIDRequestTypeListenEvent)` never prompts and tells three states apart:
+  granted, denied (TakTak is listed with its switch off) and unknown (TakTak is not listed at
+  all). `CGPreflightListenEventAccess` only says granted or not. TakTak uses the first to decide
+  whether asking makes sense (`input::access`) and the second for the 2 s poll.
+- A request (`IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)`, or the older
+  `CGRequestListenEventAccess`: both are a `TCCAccessRequest` for `kTCCServiceListenEvent`)
+  does not prompt from `tccd` itself: it logs "Service kTCCServiceListenEvent does not allow
+  prompting; returning denied", returns false at once and notifies the alert agent
+  `universalAccessAuthWarn`. That agent shows "TakTak would like to receive keystrokes from any
+  application" and, ~30 ms later, writes TakTak's entry (switched off) with
+  `TCCAccessSetForBundleIdWithOptions`. The entry exists only because the agent wrote it, so
+  opening the pane in the same instant as the request can show "No Items"; TakTak waits for the
+  entry (up to 1 s) before opening the pane.
+- The agent shows that alert, and so writes that entry, only until it has recorded the app (on
+  this Mac a second alert still came after a first one was dismissed, so the record seems to be
+  written when the user answers it, e.g. with "Open System Settings"). It records the app in
+  `~/Library/Preferences/com.apple.universalaccessAuthWarning.plist` (keys like
+  `2::tech.taktak.app` and the bundle and executable paths). `tccutil reset ListenEvent
+  tech.taktak.app` deletes the TCC entry but not that record, so afterwards every request is
+  answered "denied" without an alert and without an entry, and the pane shows "No Items" (seen:
+  the request reached `tccd`, correctly attributed to `tech.taktak.app`, and the agent did
+  nothing). Which thread asks makes no difference (an earlier successful request came from a
+  worker thread); TakTak asks on the main thread anyway, as AppKit-facing APIs expect.
+- So the welcome window cannot always make macOS list TakTak. `open_permission_settings` reports
+  whether TakTak is listed after asking (`IOHIDCheckAccess` still unknown means no), and the
+  window then tells the user to add TakTak with + below the list (or drag it in; "Show TakTak in
+  Finder" reveals the bundle), which works regardless of that record. Deleting the record
+  (`defaults delete com.apple.universalaccessAuthWarning 2::tech.taktak.app`, plus the path
+  keys) should bring the alert back, but TakTak never touches another program's preferences.
+- An ad hoc signed build gets a new code identity with every build, and the entry of an older
+  build stops matching ("Failed to match existing code requirement" in the log): the stale-entry
+  troubleshooting (remove with −, add with +, or `tccutil reset`) covers that. `npm run app`
+  signs with a stable identity (see `app.md` § Development signing).
+
 ## Summary for the UI
 
 | | Permission step | What to tell the user |
 |---|---|---|
-| macOS | Input Monitoring (onboarding window) | Already implemented. |
+| macOS | Input Monitoring (onboarding window) | Implemented. If macOS did not list TakTak (see [macOS: Input Monitoring](#macos-input-monitoring)): "Click + below the list and choose TakTak". |
 | Windows | none (`has_permission` is always true) | "TakTak can't hear keys in apps running as administrator." Keys from on-screen keyboards and automation tools are silent (injected events are ignored). A listener that fails to start: "Key listener stopped", Quit & Reopen (no macOS wording). |
 | Linux X11 | none (XInput2) | Nothing special. A listener that fails to start: as Windows. |
 | Linux Wayland | opt-in `input` group (evdev; `InputError::PermissionDenied` until then) | What the group allows (every keystroke, for every program), how to join it, and that a log out is needed. Shown by the app since Milestone 5 (`onboarding.inputGroupNeeded`). |
