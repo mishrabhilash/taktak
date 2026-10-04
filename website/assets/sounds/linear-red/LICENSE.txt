@@ -1,0 +1,48 @@
+Linear Red (TakTak sound pack "linear-red") - license and attribution
+=====================================================================
+
+The audio in this pack (sounds/*.wav and preview.wav) is adapted from:
+
+  "Typing on Keychron V1 Ultra (Red Linear Switch)" by C40115
+  https://commons.wikimedia.org/wiki/File:Typing_on_Keychron_V1_Ultra_(Red_Linear_Switch).wav
+  Licensed under the Creative Commons Attribution 4.0 International license (CC BY 4.0):
+  https://creativecommons.org/licenses/by/4.0/
+  Legal code: https://creativecommons.org/licenses/by/4.0/legalcode
+
+The pack as distributed (its sounds, preview.wav and pack.json) is licensed under the same
+license, CC BY 4.0 (SPDX: CC-BY-4.0).
+
+Credit line to show with the pack (also in the "attribution" field of pack.json):
+
+  Typing on Keychron V1 Ultra (Red Linear Switch) by C40115, CC BY 4.0, via Wikimedia Commons
+
+Changes made (by TakTak contributors, 2026-10-02)
+-------------------------------------------------
+
+These are modified excerpts of the original recording, not the recording itself:
+
+- The two (identical) channels were mixed to mono and a 30 Hz high-pass filter was
+  applied to remove DC and sub-audio rumble.
+- 24 short excerpts (17-78 ms each) were cut out of the 17.7-second recording: 13 single
+  letter keystrokes, 7 space-bar key-downs and 4 space-bar key-ups. Each excerpt starts
+  0.5 ms before its keystroke, with a 0.5 ms fade-in, and ends with a 6-8 ms fade-out.
+- One gain of +7.51 dB was applied to every excerpt, and a further -5.35 dB to the
+  space-bar excerpts. The results were saved as 16-bit, 48 kHz mono WAV files.
+- preview.wav is a short typing phrase mixed from these excerpts.
+- pack.json plays the whole pack at a volume of 0.94 (-0.5 dB), for headroom and to
+  match the loudness of the other packs (2026-10-03); the audio files are not changed
+  by it.
+- Which keystrokes were key-downs and which were key-ups was inferred from the timing of
+  the recording; it was not recorded, so some of the letter excerpts may be key-ups.
+
+SOURCES.md lists the exact sample range, fades and gain of every file, and
+tools/pack-sources/linear-red/ in the TakTak repository rebuilds the pack from the
+original file.
+
+The author does not endorse TakTak or this pack. "Keychron" is a trademark of its owner
+and is used only to describe the recorded keyboard.
+
+Disclaimer of warranties: the original work is offered as-is, and so is this adaptation.
+To the extent possible, the licensor and TakTak contributors make no representations or
+warranties of any kind concerning the material; see sections 5 and 6 of the license
+(https://creativecommons.org/licenses/by/4.0/legalcode).

@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Keep in sync with the Content-Security-Policy in _headers (which adds frame-ancestors). -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; media-src 'self'; connect-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta name="referrer" content="no-referrer">
+  <title>TakTak: mechanical keyboard sounds as you type, fully offline</title>
+  <meta name="description" content="TakTak (टक-टक) is a free, open-source menu-bar app that plays real mechanical keyboard sounds as you type, in every app, on macOS, Windows and Linux. Fully offline: it never uses the internet.">
+  <link rel="canonical" href="https://taktak.tech/">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#fbf8f4" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#131110" media="(prefers-color-scheme: dark)">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="TakTak">
+  <meta property="og:url" content="https://taktak.tech/">
+  <meta property="og:title" content="TakTak: your keyboard, but it goes TakTak">
+  <meta property="og:description" content="Real mechanical keyboard sounds as you type, in every app. A tiny open-source menu-bar app for macOS, Windows and Linux. Fully offline: it never uses the internet.">
+  <meta property="og:image" content="https://taktak.tech/assets/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="An orange TakTak keycap next to the words: Your keyboard, but it goes TakTak. Fully offline.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="TakTak: your keyboard, but it goes TakTak">
+  <meta name="twitter:description" content="Real mechanical keyboard sounds as you type, in every app. Open source, fully offline.">
+  <meta name="twitter:image" content="https://taktak.tech/assets/og-image.png">
+
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+  <script src="main.js" defer></script>
+</head>
+<body>
+  <!-- Inline icon sprite: no icon fonts, no external files. -->
+  <svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z" fill="currentColor"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m0 0-4.5-4.5M12 15l4.5-4.5M5 19h14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.75 1-5.8L3.5 9.7l5.9-.9z" fill="currentColor"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.58 2 12.23c0 4.52 2.87 8.35 6.84 9.7.5.1.68-.22.68-.49l-.01-1.7c-2.78.62-3.37-1.36-3.37-1.36-.45-1.18-1.11-1.5-1.11-1.5-.91-.64.07-.62.07-.62 1 .07 1.53 1.05 1.53 1.05.9 1.56 2.35 1.11 2.92.85.09-.66.35-1.11.63-1.37-2.22-.26-4.55-1.14-4.55-5.07 0-1.12.39-2.04 1.03-2.76-.1-.26-.45-1.3.1-2.71 0 0 .84-.28 2.75 1.05A9.36 9.36 0 0 1 12 6.84c.85 0 1.7.12 2.5.34 1.9-1.33 2.74-1.05 2.74-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.64 1.03 2.76 0 3.94-2.34 4.8-4.57 5.06.36.32.68.94.68 1.9l-.01 2.82c0 .27.18.6.69.49A10.1 10.1 0 0 0 22 12.23C22 6.58 17.52 2 12 2z" fill="currentColor"/></symbol>
+    <symbol id="i-offline" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 8.8a15 15 0 0 1 4.3-2.7M10.2 5.1A15 15 0 0 1 22 8.8M5 12.5a10 10 0 0 1 4.6-2.3M14.6 10.4A10 10 0 0 1 19 12.5M8.5 16a5 5 0 0 1 7 0"/><path d="M3 3l18 18"/><circle cx="12" cy="19.5" r=".6" fill="currentColor"/></g></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 4.5 6v5.5c0 4.6 3.1 8.3 7.5 9.5 4.4-1.2 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.4-4.4"/></g></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="4"/><path d="M7 16h10"/><path d="M8 8.5h.01M12 8.5h.01M16 8.5h.01M10 12h.01M14 12h.01"/></g></symbol>
+    <symbol id="i-eye-off" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.6 5.1A10.4 10.4 0 0 1 12 5c5 0 8.7 4 10 7a13 13 0 0 1-2.3 3.4M6.6 6.6C4.4 8 2.9 10.1 2 12c1.3 3 5 7 10 7 1.9 0 3.6-.6 5-1.4"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="M3 3l18 18"/></g></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 7-5 5 5 5M16 7l5 5-5 5M13.5 4l-3 16"/></g></symbol>
+    <symbol id="i-wave" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12h2M7 8v8M11 5v14M15 9v6M19 7v10M21 12h0"/></g></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2 4.5 13.5H11L10 22l8.5-11.5H12z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></symbol>
+    <symbol id="i-box" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 2.8 20 7v10l-8 4.2L4 17V7z"/><path d="M4 7l8 4.2L20 7M12 11.2v10"/></g></symbol>
+    <symbol id="i-import" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3h5a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-5"/><path d="M3 12h11m0 0-4-4m4 4-4 4"/></g></symbol>
+    <symbol id="i-apps" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><path d="m14 17 2 2 4-4" stroke-linecap="round"/></g></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></g></symbol>
+    <symbol id="i-menubar" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><rect x="2.5" y="3.5" width="19" height="17" rx="3"/><path d="M2.5 8h19"/><rect x="13.5" y="10.5" width="6" height="7" rx="1.5"/></g></symbol>
+    <symbol id="i-devices" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><rect x="3" y="4" width="14" height="10" rx="1.5"/><path d="M1.5 17.5h17"/><rect x="18.5" y="8" width="4" height="10" rx="1"/></g></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m0 0-5-5m5 5-5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/></g></symbol>
+    <symbol id="i-apple" viewBox="0 0 24 24"><path d="M16.4 12.6c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.9-3-.8a4.5 4.5 0 0 0-3.8 2.3c-1.6 2.8-.4 7 1.2 9.2.8 1.1 1.7 2.4 2.9 2.3 1.2 0 1.6-.7 3-.7s1.8.7 3 .7c1.3 0 2-1.1 2.8-2.3.9-1.3 1.2-2.5 1.3-2.6-.1 0-2.5-.9-2.5-3.7zM14.2 5.8c.6-.8 1.1-1.9 1-3-1 0-2.1.6-2.8 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2.1-.5 2.8-1.3z" fill="currentColor"/></symbol>
+    <symbol id="i-windows" viewBox="0 0 24 24"><path d="M3 5.4 10.4 4.4v7.1H3zM11.4 4.2 21 3v8.5h-9.6zM3 12.5h7.4v7.1L3 18.6zM11.4 12.5H21V21l-9.6-1.3z" fill="currentColor"/></symbol>
+    <symbol id="i-linux" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M12 2.5c-2.2 0-3.4 1.8-3.4 4.2 0 1.6-.3 2.6-1.4 4.1-1.3 1.8-2.4 3.9-2.2 6 .1 1.2.9 2 1.9 2.3"/><path d="M12 2.5c2.2 0 3.4 1.8 3.4 4.2 0 1.6.3 2.6 1.4 4.1 1.3 1.8 2.4 3.9 2.2 6-.1 1.2-.9 2-1.9 2.3"/><path d="M6.9 19.1c.9 1.5 2.8 2.4 5.1 2.4s4.2-.9 5.1-2.4"/><circle cx="10.4" cy="7" r=".5" fill="currentColor"/><circle cx="13.6" cy="7" r=".5" fill="currentColor"/><path d="M10.6 9.2 12 10.3l1.4-1.1"/></g></symbol>
+  </svg>
+
+  <a class="skip" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="brand" href="#top" aria-label="TakTak home">
+        <svg class="brand-cap" viewBox="0 0 64 64" aria-hidden="true" focusable="false"><rect x="4" y="4" width="56" height="56" rx="13" fill="#d65a20"/><rect x="9.5" y="6.5" width="45" height="42" rx="9" fill="#ff8a4c"/><rect x="22" y="15" width="20" height="5" rx="2.5" fill="#fff"/><rect x="29.5" y="15" width="5" height="23" rx="2.5" fill="#fff"/></svg>
+        <span class="brand-name">TakTak</span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a href="#try">Hear it</a>
+        <a href="#privacy">Privacy</a>
+        <a href="#features">Features</a>
+        <a href="#make">Make a pack</a>
+        <a href="#download">Download</a>
+      </nav>
+      <a class="star-badge" data-repo="" href="#star">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+        <span>Star</span>
+        <svg class="icon icon-star" aria-hidden="true"><use href="#i-star"/></svg>
+      </a>
+    </div>
+  </header>
+
+  <main id="main">
+    <!-- HERO -->
+    <section class="hero" id="top" aria-labelledby="hero-title">
+      <div class="wrap hero-grid">
+        <div class="hero-copy">
+          <p class="eyebrow">TakTak <span lang="hi">टक-टक</span> <span class="eyebrow-note">· the Hindi sound of tapping</span></p>
+          <h1 id="hero-title">Your keyboard, but it goes <span class="accent-word">TakTak.</span></h1>
+          <p class="lede">A tiny menu-bar app that plays real mechanical keyboard sounds as you type, in every app, about 6&nbsp;ms after the key goes down. Free and open source for macOS, Windows and Linux.</p>
+
+          <a class="offline-callout" href="#privacy">
+            <svg class="icon" aria-hidden="true"><use href="#i-offline"/></svg>
+            <span><strong>Fully offline — TakTak never uses the internet.</strong> <span class="callout-sub">It never stores, logs or sends what you type.</span></span>
+          </a>
+
+          <div class="cta">
+            <a class="btn btn-primary btn-lg" id="cta-primary" data-dl="mac:0" href="#download">
+              <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+              <span id="cta-label">Download TakTak</span>
+            </a>
+            <p class="cta-meta" id="cta-meta">Free · MIT licensed · macOS, Windows and Linux</p>
+            <p class="cta-others" id="cta-others">Other platforms: <a href="#download">macOS, Windows and Linux downloads</a></p>
+          </div>
+        </div>
+
+        <figure class="hero-demo">
+          <!-- TODO(demo video): replace this keyboard illustration with a short demo (≤ 10 s,
+               muted autoplay loop, with poster image), e.g.
+               <video src="assets/demo.mp4" poster="assets/demo-poster.png" autoplay muted loop playsinline></video>
+               Keep it self-hosted in assets/ (the CSP allows media from 'self' only). -->
+          <div class="kbd" id="kbd" aria-hidden="true">
+            <div class="kbd-row">
+              <span class="k" data-code="Backquote">`</span><span class="k" data-code="Digit1">1</span><span class="k" data-code="Digit2">2</span><span class="k" data-code="Digit3">3</span><span class="k" data-code="Digit4">4</span><span class="k" data-code="Digit5">5</span><span class="k" data-code="Digit6">6</span><span class="k" data-code="Digit7">7</span><span class="k" data-code="Digit8">8</span><span class="k" data-code="Digit9">9</span><span class="k" data-code="Digit0">0</span><span class="k" data-code="Minus">-</span><span class="k" data-code="Equal">=</span><span class="k k-mod w2" data-code="Backspace">⌫</span>
+            </div>
+            <div class="kbd-row">
+              <span class="k k-mod w15" data-code="Tab">tab</span><span class="k" data-code="KeyQ">Q</span><span class="k" data-code="KeyW">W</span><span class="k" data-code="KeyE">E</span><span class="k" data-code="KeyR">R</span><span class="k k-accent" data-code="KeyT">T</span><span class="k" data-code="KeyY">Y</span><span class="k" data-code="KeyU">U</span><span class="k" data-code="KeyI">I</span><span class="k" data-code="KeyO">O</span><span class="k" data-code="KeyP">P</span><span class="k" data-code="BracketLeft">[</span><span class="k" data-code="BracketRight">]</span><span class="k w15" data-code="Backslash">\</span>
+            </div>
+            <div class="kbd-row">
+              <span class="k k-mod w175" data-code="CapsLock">caps</span><span class="k" data-code="KeyA">A</span><span class="k" data-code="KeyS">S</span><span class="k" data-code="KeyD">D</span><span class="k" data-code="KeyF">F</span><span class="k" data-code="KeyG">G</span><span class="k" data-code="KeyH">H</span><span class="k" data-code="KeyJ">J</span><span class="k k-accent" data-code="KeyK">K</span><span class="k" data-code="KeyL">L</span><span class="k" data-code="Semicolon">;</span><span class="k" data-code="Quote">'</span><span class="k k-accent w225" data-code="Enter">return</span>
+            </div>
+            <div class="kbd-row">
+              <span class="k k-mod w225" data-code="ShiftLeft">shift</span><span class="k" data-code="KeyZ">Z</span><span class="k" data-code="KeyX">X</span><span class="k" data-code="KeyC">C</span><span class="k" data-code="KeyV">V</span><span class="k" data-code="KeyB">B</span><span class="k" data-code="KeyN">N</span><span class="k" data-code="KeyM">M</span><span class="k" data-code="Comma">,</span><span class="k" data-code="Period">.</span><span class="k" data-code="Slash">/</span><span class="k k-mod w275" data-code="ShiftRight">shift</span>
+            </div>
+            <div class="kbd-row">
+              <span class="k k-mod w15" data-code="ControlLeft">ctrl</span><span class="k k-mod w125" data-code="AltLeft">alt</span><span class="k k-mod w15" data-code="MetaLeft">cmd</span><span class="k k-space" data-code="Space"></span><span class="k k-mod w15" data-code="MetaRight">cmd</span><span class="k k-mod w125" data-code="AltRight">alt</span><span class="k k-mod w175" data-code="ControlRight">ctrl</span>
+            </div>
+          </div>
+          <figcaption class="hero-caption">Demo video coming soon. Meanwhile, press the keys above, or <a href="#try">type in the box below</a> to hear TakTak.</figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- TRY IT -->
+    <section class="section" id="try" aria-labelledby="try-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Hear it</p>
+          <h2 id="try-title">Type here to try it</h2>
+          <p class="section-lede">Every pack below is bundled with TakTak and plays right here in your browser, from the pack's own recordings. Same key, same sound, just like the app.</p>
+        </div>
+
+        <div class="try card">
+          <div class="try-controls">
+            <div class="field">
+              <label for="try-pack">Sound pack</label>
+              <select id="try-pack" name="pack">
+                <!-- packs:options:start -->
+                <option value="buckling-spring" selected>Buckling Spring</option>
+                <option value="key-press">Key Press</option>
+                <option value="linear-red">Linear Red</option>
+                <option value="office-classic">Office Classic</option>
+                <option value="spring-lite">Spring Lite</option>
+                <option value="tactile">Tactile</option>
+                <option value="typewriter">Typewriter</option>
+                <option value="ui-clicks">UI Clicks</option>
+                <option value="vintage-keyboard">Vintage</option>
+                <!-- packs:options:end -->
+              </select>
+            </div>
+            <div class="field field-volume">
+              <label for="try-volume">Volume</label>
+              <input type="range" id="try-volume" name="volume" min="0" max="100" value="80" step="1">
+            </div>
+          </div>
+
+          <label class="try-label" for="try-input">Type here to try it</label>
+          <textarea id="try-input" name="try" rows="4" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Start typing… every key clicks with the pack you picked." aria-describedby="try-note try-status"></textarea>
+          <p class="try-status" id="try-status" role="status" aria-live="polite"></p>
+          <p class="try-note" id="try-note">
+            <svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>
+            <span><strong>Nothing you type leaves this page.</strong> The sounds play in your browser, from files already on this site; the text is never stored or sent anywhere, and it is gone when you close the tab.</span>
+          </p>
+        </div>
+
+        <h3 class="sub-title" id="packs-title">The 9 bundled packs <span class="sub-note">click to hear</span></h3>
+        <ul class="packs" aria-labelledby="packs-title">
+          <!-- packs:cards:start -->
+          <li class="pack" data-pack="buckling-spring" data-volume="0.96" data-pitch="0.015" data-var-volume="0.06">
+            <div class="pack-head">
+              <h4 class="pack-name">Buckling Spring</h4>
+              <a class="badge badge-mit" data-repo="/blob/main/CREDITS.md#buckling-spring-buckling-spring" href="#credits" title="License: MIT (credits)">MIT</a>
+            </div>
+            <p class="pack-blurb">The ping and clack of a classic buckling-spring board, every key sampled down and up.</p>
+            <p class="pack-credit">Recorded by Ico Doornekamp (bucklespring). <a href="assets/sounds/buckling-spring/LICENSE.txt">License text</a></p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="buckling-spring" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Buckling Spring preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="buckling-spring">Type with it<span class="visually-hidden">: Buckling Spring</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="key-press" data-volume="1.14" data-pitch="0.015" data-var-volume="0.06">
+            <div class="pack-head">
+              <h4 class="pack-name">Key Press</h4>
+              <a class="badge badge-ccby" data-repo="/blob/main/CREDITS.md#key-press-key-press" href="#credits" title="License: CC BY 3.0 (credits)">CC BY 3.0</a>
+            </div>
+            <p class="pack-blurb">Light, crisp ticks; an older board thumping under Space and the modifiers.</p>
+            <p class="pack-credit">&quot;Single Key Press Sounds&quot; by eklee, qubodup (https://opengameart.org/content/single-key-press-sounds) and &quot;Mechanical keyboard sound&quot; by bluszcz (https://opengameart.org/content/mechanical-keyboard-sound), both CC BY 3.0 (https://creativecommons.org/licenses/by/3.0/). Sliced, mixed to mono and level-adjusted by TakTak contributors. Converted to MP3 for this page. <a href="assets/sounds/key-press/LICENSE.txt">License text</a></p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="key-press" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Key Press preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="key-press">Type with it<span class="visually-hidden">: Key Press</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="linear-red" data-volume="0.94" data-pitch="0.015" data-var-volume="0.06">
+            <div class="pack-head">
+              <h4 class="pack-name">Linear Red</h4>
+              <a class="badge badge-ccby" data-repo="/blob/main/CREDITS.md#linear-red-linear-red" href="#credits" title="License: CC BY 4.0 (credits)">CC BY 4.0</a>
+            </div>
+            <p class="pack-blurb">Fast typing on red linear switches: short letter clacks and a deeper space bar.</p>
+            <p class="pack-credit">Typing on Keychron V1 Ultra (Red Linear Switch) by C40115, CC BY 4.0, via Wikimedia Commons. Source: https://commons.wikimedia.org/wiki/File:Typing_on_Keychron_V1_Ultra_(Red_Linear_Switch).wav. License: https://creativecommons.org/licenses/by/4.0/. Converted to MP3 for this page. <a href="assets/sounds/linear-red/LICENSE.txt">License text</a></p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="linear-red" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Linear Red preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="linear-red">Type with it<span class="visually-hidden">: Linear Red</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="office-classic" data-volume="0.94" data-pitch="0.01" data-var-volume="0.05">
+            <div class="pack-head">
+              <h4 class="pack-name">Office Classic</h4>
+              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#office-classic-office-classic" href="#credits" title="License: CC0 (credits)">CC0</a>
+            </div>
+            <p class="pack-blurb">The soft, rounded clack of an everyday office membrane keyboard.</p>
+            <p class="pack-credit">Recorded by unicaegames. CC0: no credit required, given with thanks.</p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="office-classic" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Office Classic preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="office-classic">Type with it<span class="visually-hidden">: Office Classic</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="spring-lite" data-volume="0.74" data-pitch="0.015" data-var-volume="0.06">
+            <div class="pack-head">
+              <h4 class="pack-name">Spring Lite</h4>
+              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#spring-lite-spring-lite" href="#credits" title="License: CC0 (credits)">CC0</a>
+            </div>
+            <p class="pack-blurb">A compact, lighter buckling-spring board: bright clicks, softer up-strokes.</p>
+            <p class="pack-credit">Recorded by Anonimski. CC0: no credit required, given with thanks.</p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="spring-lite" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Spring Lite preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="spring-lite">Type with it<span class="visually-hidden">: Spring Lite</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="tactile" data-volume="0.98" data-pitch="0.015" data-var-volume="0.06">
+            <div class="pack-head">
+              <h4 class="pack-name">Tactile</h4>
+              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#tactile-tactile" href="#credits" title="License: CC0 (credits)">CC0</a>
+            </div>
+            <p class="pack-blurb">Bright, snappy tactile switches with a separate key-up.</p>
+            <p class="pack-credit">Recorded by StavSounds, alpinemesh, yottasounds. CC0: no credit required, given with thanks.</p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="tactile" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Tactile preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="tactile">Type with it<span class="visually-hidden">: Tactile</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="typewriter" data-volume="1.29" data-pitch="0.015" data-var-volume="0.06">
+            <div class="pack-head">
+              <h4 class="pack-name">Typewriter</h4>
+              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#typewriter-typewriter" href="#credits" title="License: CC0 (credits)">CC0</a>
+            </div>
+            <p class="pack-blurb">A portable manual typewriter, with a carriage return and bell on Enter.</p>
+            <p class="pack-credit">Recorded by Joseph Sardin (BigSoundBank). CC0: no credit required, given with thanks.</p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="typewriter" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Typewriter preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="typewriter">Type with it<span class="visually-hidden">: Typewriter</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="ui-clicks" data-volume="0.86" data-pitch="0.02" data-var-volume="0.08">
+            <div class="pack-head">
+              <h4 class="pack-name">UI Clicks</h4>
+              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#ui-clicks-ui-clicks" href="#credits" title="License: CC0 (credits)">CC0</a>
+            </div>
+            <p class="pack-blurb">Not a keyboard: crisp interface clicks and a two-note blip on Enter.</p>
+            <p class="pack-credit">Recorded by Kenney. CC0: no credit required, given with thanks.</p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="ui-clicks" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> UI Clicks preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="ui-clicks">Type with it<span class="visually-hidden">: UI Clicks</span></button>
+            </div>
+          </li>
+          <li class="pack" data-pack="vintage-keyboard" data-volume="0.88" data-pitch="0.02" data-var-volume="0.08">
+            <div class="pack-head">
+              <h4 class="pack-name">Vintage</h4>
+              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#vintage-vintage-keyboard" href="#credits" title="License: CC0 (credits)">CC0</a>
+            </div>
+            <p class="pack-blurb">Crisp clacks from a 1986 DOS-era mechanical keyboard.</p>
+            <p class="pack-credit">Recorded by jim-ph. CC0: no credit required, given with thanks.</p>
+            <div class="pack-actions">
+              <button type="button" class="btn btn-play" data-preview="vintage-keyboard" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Vintage preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="vintage-keyboard">Type with it<span class="visually-hidden">: Vintage</span></button>
+            </div>
+          </li>
+          <!-- packs:cards:end -->
+        </ul>
+        <p class="fine">Previews are the packs' own <code>preview.wav</code> files and keystrokes, converted to MP3 for this page. Full credits, licenses and changes: <a data-repo="/blob/main/CREDITS.md" href="#credits">CREDITS.md</a>.</p>
+      </div>
+    </section>
+
+    <!-- PRIVACY -->
+    <section class="section section-privacy" id="privacy" aria-labelledby="privacy-title">
+      <div class="wrap">
+        <div class="privacy-banner">
+          <svg class="icon icon-xl" aria-hidden="true"><use href="#i-offline"/></svg>
+          <div>
+            <p class="eyebrow">The promise</p>
+            <h2 id="privacy-title">Fully offline — TakTak never uses the internet.</h2>
+            <p class="section-lede">No accounts, no telemetry, no analytics, no crash reports, no update checks, no downloads. There is no network code in the app at all, so it works the same with Wi-Fi off, forever.</p>
+          </div>
+        </div>
+        <div class="grid-3">
+          <article class="card point">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-key"/></svg>
+            <h3>Keyboard access, for one thing only</h3>
+            <p>To click when you press a key in <em>another</em> app, TakTak needs the system's keyboard-monitoring permission (on macOS: Input Monitoring). It uses it only to know <strong>that</strong> a key went down or came back up, and <strong>which</strong> physical key, so it can play that key's sound. Revoke it any time and TakTak just goes quiet.</p>
+          </article>
+          <article class="card point">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-eye-off"/></svg>
+            <h3>Never stored, logged or sent</h3>
+            <p>TakTak never sees the characters you type and never reads your keyboard layout. It plays a sound and forgets the key. It keeps no log files, saves nothing but your settings, and has nowhere to send anything. Password fields and the lock screen are always silent on macOS.</p>
+          </article>
+          <article class="card point">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-code"/></svg>
+            <h3>Open source, so anyone can check</h3>
+            <p>Every line is public under the MIT license. CI fails the build if a networking library, a network API or an outside URL ever shows up in the app. Don't take our word for it: <a data-repo="/blob/main/CONTRIBUTING.md#privacy-rules" href="#credits">read the privacy rules</a> and the code.</p>
+          </article>
+        </div>
+        <p class="fine center">This website is the same: no trackers, no cookies, no analytics, and no requests to anyone else's servers.</p>
+      </div>
+    </section>
+
+    <!-- FEATURES -->
+    <section class="section" id="features" aria-labelledby="features-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Features</p>
+          <h2 id="features-title">Small app, real clicks</h2>
+        </div>
+        <ul class="features">
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-wave"/></svg>
+            <h3>Real press and release</h3>
+            <p>Each key gets its own key-down <em>and</em> key-up sound where the recording has them, from 9 recorded packs: buckling spring to typewriter.</p>
+          </li>
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-bolt"/></svg>
+            <h3>About 6 ms latency</h3>
+            <p>A dedicated real-time audio path: 5.9&nbsp;ms median from key-down to sound, measured on a MacBook Pro's own keyboard and speakers.</p>
+          </li>
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-box"/></svg>
+            <h3>Open pack format</h3>
+            <p>A pack is a folder with a <code>pack.json</code> and some audio files. Drop it in and it appears within a second, no restart.</p>
+          </li>
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-import"/></svg>
+            <h3>Import Mechvibes packs</h3>
+            <p>Convert your Mechvibes packs (v1, v2, DX, ++) for personal use. They play on your machine and are never bundled or shared.</p>
+          </li>
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-apps"/></svg>
+            <h3>Per-app rules</h3>
+            <p>Sounds everywhere, only in some apps, or never in some apps (macOS for now).</p>
+          </li>
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-lock"/></svg>
+            <h3>Auto-mute on lock</h3>
+            <p>Silent on the lock screen, during user switching and in password fields (macOS), and optionally when your headphones disconnect.</p>
+          </li>
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-menubar"/></svg>
+            <h3>Lives in your menu bar</h3>
+            <p>A tray popover to switch packs, change the volume, mute and preview. Settings for press and release volume, "humanize" and a global mute hotkey.</p>
+          </li>
+          <li class="feature">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-devices"/></svg>
+            <h3>Cross-platform</h3>
+            <p>macOS 11+ (Apple silicon and Intel), Windows 10/11 and Linux (X11 and Wayland). Light on the system: idle, it closes the audio device.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- DOWNLOAD -->
+    <section class="section section-alt" id="download" aria-labelledby="download-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Download</p>
+          <h2 id="download-title">Get TakTak <span class="version" id="dl-version"></span></h2>
+          <p class="section-lede">Free, from GitHub Releases. Each release lists <code>SHA256SUMS.txt</code> so you can verify your download.</p>
+        </div>
+        <div class="grid-3 platforms">
+          <article class="card platform" data-os="mac">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-apple"/></svg>
+            <h3>macOS</h3>
+            <p class="platform-req">macOS 11 or newer, Apple silicon and Intel</p>
+            <a class="btn btn-primary" data-dl="mac:0" href="#download"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Download .dmg</a>
+            <p class="platform-file" data-dl-name="mac:0"></p>
+          </article>
+          <article class="card platform" data-os="windows">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-windows"/></svg>
+            <h3>Windows</h3>
+            <p class="platform-req">Windows 10 or 11, x64</p>
+            <a class="btn btn-primary" data-dl="windows:0" href="#download"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Download .msi</a>
+            <a class="btn btn-ghost" data-dl="windows:1" href="#download">or the .exe installer</a>
+            <p class="platform-file" data-dl-name="windows:0"></p>
+          </article>
+          <article class="card platform" data-os="linux">
+            <svg class="icon icon-lg" aria-hidden="true"><use href="#i-linux"/></svg>
+            <h3>Linux</h3>
+            <p class="platform-req">x64, X11 or Wayland</p>
+            <a class="btn btn-primary" data-dl="linux:0" href="#download"><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Download .AppImage</a>
+            <a class="btn btn-ghost" data-dl="linux:1" href="#download">or the .deb package</a>
+            <p class="platform-file" data-dl-name="linux:0"></p>
+          </article>
+        </div>
+        <div class="notes">
+          <p><strong>First launch:</strong> until code signing is set up, macOS says it cannot verify the developer: open System Settings → Privacy &amp; Security and click <em>Open Anyway</em> once. Windows SmartScreen may say "Windows protected your PC": click <em>More info → Run anyway</em>.</p>
+          <p><strong>Platform status:</strong> macOS is fully supported and tested. The Windows and Linux key listeners are implemented but not yet verified on real hardware, and per-app rules and auto-mute on lock are macOS only for now. <a data-repo="/blob/main/docs/platform-notes.md" href="#download">Platform notes</a>.</p>
+          <p><a data-repo="/releases/latest" href="#download">All releases and checksums</a> · <a data-repo="#build-from-source" href="#download">Build from source</a></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- MAKE A PACK -->
+    <section class="section" id="make" aria-labelledby="make-title">
+      <div class="wrap make-grid">
+        <div>
+          <p class="eyebrow">Make your own pack</p>
+          <h2 id="make-title">Record your keyboard. Share it.</h2>
+          <p class="section-lede">A pack is a folder (or a <code>.zip</code>) with a <code>pack.json</code> and some WAV, Ogg or MP3 files. Record your own board with <code>pack-maker</code>, or slice a recording you're allowed to use, then drop it in your packs folder: TakTak picks it up in about a second. A broken pack never breaks TakTak.</p>
+          <div class="btn-row">
+            <a class="btn btn-primary" data-repo="/blob/main/docs/adding-a-pack.md" href="#make"><svg class="icon" aria-hidden="true"><use href="#i-doc"/></svg>Adding a pack, step by step</a>
+            <a class="btn btn-ghost" data-repo="/blob/main/docs/pack-format.md" href="#make">Pack format spec<svg class="icon" aria-hidden="true"><use href="#i-arrow"/></svg></a>
+          </div>
+        </div>
+        <pre class="code" tabindex="0" aria-label="Example pack.json"><code>{
+  <span class="t-k">"format"</span>: <span class="t-n">1</span>,
+  <span class="t-k">"id"</span>: <span class="t-s">"my-board"</span>,
+  <span class="t-k">"name"</span>: <span class="t-s">"My Board"</span>,
+  <span class="t-k">"author"</span>: <span class="t-s">"You"</span>,
+  <span class="t-k">"license"</span>: <span class="t-s">"CC0-1.0"</span>,
+  <span class="t-k">"groups"</span>: {
+    <span class="t-k">"alphanumeric"</span>: {
+      <span class="t-k">"press"</span>:   [<span class="t-s">"sounds/down-1.wav"</span>, <span class="t-s">"sounds/down-2.wav"</span>],
+      <span class="t-k">"release"</span>: [<span class="t-s">"sounds/up-1.wav"</span>, <span class="t-s">"sounds/up-2.wav"</span>]
+    },
+    <span class="t-k">"space"</span>: { <span class="t-k">"press"</span>: [<span class="t-s">"sounds/space.wav"</span>] }
+  }
+}</code></pre>
+      </div>
+    </section>
+
+    <!-- CREDITS -->
+    <section class="section section-alt" id="credits" aria-labelledby="credits-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">Credits and licensing</p>
+          <h2 id="credits-title">Open source, with every sound credited</h2>
+        </div>
+        <div class="grid-3">
+          <div class="card point">
+            <h3>Code: MIT</h3>
+            <p>TakTak's code is released under the <a data-repo="/blob/main/LICENSE" href="#credits">MIT License</a>. Third-party software in the app is listed in <a data-repo="/blob/main/THIRD_PARTY_NOTICES.md" href="#credits">THIRD_PARTY_NOTICES.md</a>.</p>
+          </div>
+          <div class="card point">
+            <h3>Sounds: per pack</h3>
+            <p>Each bundled pack carries its own license (MIT, CC BY 3.0, CC BY 4.0 or CC0), made from real recordings. Authors, sources and changes are in <a data-repo="/blob/main/CREDITS.md" href="#credits">CREDITS.md</a>. The original authors do not endorse TakTak.</p>
+          </div>
+          <div class="card point">
+            <h3>Imported packs stay yours</h3>
+            <p>Packs imported from Mechvibes usually don't state a license, so TakTak marks them for personal use: they play on your machine and are never bundled or shared.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- STAR -->
+    <section class="section star-band" id="star" aria-labelledby="star-title">
+      <div class="wrap star-inner">
+        <h2 id="star-title">Like the sound of it?</h2>
+        <p>Star TakTak on GitHub, report what you find, or send a pack.</p>
+        <div class="btn-row center">
+          <a class="btn btn-star btn-lg" data-repo="" href="#star"><svg class="icon" aria-hidden="true"><use href="#i-star"/></svg>Star on GitHub</a>
+          <a class="btn btn-ghost btn-lg" data-repo="/blob/main/CONTRIBUTING.md" href="#star">Contribute</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap footer-inner">
+      <div class="footer-brand">
+        <p><strong>TakTak</strong> <span lang="hi">टक-टक</span></p>
+        <p class="fine">Your keyboard, but it goes TakTak.<br>Fully offline — TakTak never uses the internet.</p>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        <a data-repo="" href="#star">GitHub</a>
+        <a data-repo="/releases/latest" href="#download">Releases</a>
+        <a data-repo="/blob/main/docs/adding-a-pack.md" href="#make">Make a pack</a>
+        <a data-repo="/blob/main/CREDITS.md" href="#credits">Credits</a>
+        <a data-repo="/blob/main/LICENSE" href="#credits">MIT License</a>
+      </nav>
+      <p class="fine footer-legal">© TakTak contributors. <a href="https://taktak.tech/">taktak.tech</a> has no trackers, no cookies and makes no third-party requests.</p>
+    </div>
+  </footer>
+</body>
+</html>

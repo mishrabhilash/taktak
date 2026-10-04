@@ -219,4 +219,6 @@ TakTak's code is released under the [MIT License](LICENSE). The bundled sound pa
 the `LICENSE.txt` and `SOURCES.md` in each pack folder). Third-party software:
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Website: [taktak.tech](https://taktak.tech)
+Website: [taktak.tech](https://taktak.tech). Its source is the static page in [`website/`](website/)
+(no build step, no trackers, and you can hear every bundled pack there); how to preview and
+deploy it is in [website/README.md](website/README.md).

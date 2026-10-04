@@ -1,0 +1,48 @@
+# Deploys the website (website/, plain static files, no build step) to GitHub Pages on every
+# push to main that touches it. One-time setup: Settings -> Pages -> Source: "GitHub Actions".
+# The custom domain comes from website/CNAME (taktak.tech) and only works once its DNS points
+# at GitHub Pages; see website/README.md.
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'website/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy website/
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage the site (without the sound build script and the README)
+        run: |
+          mkdir _site
+          rsync -a --exclude 'tools/' --exclude 'README.md' website/ _site/
+          ls -la _site
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
