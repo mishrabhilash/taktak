@@ -17,6 +17,8 @@ Needs Python 3.9+ and ffmpeg with libmp3lame. Writes, for every pack in packs/:
   website/index.html                       the pack <option>s and cards, between the
                                            "packs:options" and "packs:cards" markers
 
+and removes the folders in website/assets/sounds/ of packs that are no longer bundled.
+
 Which sound a key plays is resolved exactly like the app does (docs/pack-format.md,
 "Resolution" and "Sound sets"): keys[<key>] -> groups[<group>] -> groups.other ->
 groups.alphanumeric, and among several files the one picked by the app's fixed hash of the
@@ -54,7 +56,6 @@ GAP_SECONDS = 0.08  # silence after every sound
 
 # Short card text, from the README's pack table (the full descriptions are in packs.json).
 BLURBS = {
-    "buckling-spring": "The ping and clack of a classic buckling-spring board, every key sampled down and up.",
     "key-press": "Light, crisp ticks; an older board thumping under Space and the modifiers.",
     "linear-red": "Fast typing on red linear switches: short letter clacks and a deeper space bar.",
     "office-classic": "The soft, rounded clack of an everyday office membrane keyboard.",
@@ -65,7 +66,6 @@ BLURBS = {
     "vintage-keyboard": "Crisp clacks from a 1986 DOS-era mechanical keyboard.",
 }
 RECORDED_BY = {
-    "buckling-spring": "Ico Doornekamp (bucklespring)",
     "key-press": "eklee, qubodup, bluszcz",
     "linear-red": "C40115",
     "office-classic": "unicaegames",
@@ -88,7 +88,7 @@ LICENSE_URIS = {
     "CC-BY-3.0": "https://creativecommons.org/licenses/by/3.0/",
     "CC-BY-4.0": "https://creativecommons.org/licenses/by/4.0/",
 }
-DEFAULT_PACK = "buckling-spring"
+DEFAULT_PACK = "tactile"
 
 ALPHANUMERIC_EXTRA = {
     "Backquote", "Minus", "Equal", "BracketLeft", "BracketRight", "Backslash", "Semicolon",
@@ -352,6 +352,10 @@ def main():
             info = build_pack(args.ffmpeg, pack_dir, key_names, Path(tmp))
             packs.append(info)
             print(f"{info['id']:18} {info['sounds']:3} sounds")
+    bundled = {p["id"] for p in packs}
+    for stale in sorted(d for d in OUT.iterdir() if d.is_dir() and d.name not in bundled):
+        shutil.rmtree(stale)
+        print(f"{stale.name:18} removed (no longer bundled)")
     packs.sort(key=lambda p: (not p["default"], p["name"]))
     write_html(packs)
 

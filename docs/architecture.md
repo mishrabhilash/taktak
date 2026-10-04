@@ -196,7 +196,6 @@ median of 5 runs on an Apple M3 Max, 14 cores, warm file cache):
 
 | Pack | Files | Audio at 48 kHz | Memory (f32) | Source rate | Load time |
 |---|---:|---:|---:|---|---:|
-| `buckling-spring` | 168 | 31.1 s | 5.7 MB | 44.1 kHz | 25 ms |
 | `key-press` | 25 | 5.1 s | 0.9 MB | 48 kHz | 2 ms |
 | `linear-red` | 25 | 3.0 s | 0.5 MB | 48 kHz | 1 ms |
 | `office-classic` | 63 | 7.0 s | 1.3 MB | 44.1 kHz | 12 ms |

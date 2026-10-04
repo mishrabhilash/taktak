@@ -1,5 +1,5 @@
 // In-browser stand-in for the Rust app, used automatically outside Tauri (`npm run dev`).
-// It lists the 9 bundled packs from packs/*/pack.json, applies every command to an in-memory
+// It lists the 8 bundled packs from packs/*/pack.json, applies every command to an in-memory
 // AppState, emits `state-changed` like the app does, and plays pack previews from the dev
 // server. Nothing is persisted.
 //
@@ -10,7 +10,7 @@
 //                 changes until the user adds TakTak by hand (granted 6 s after reveal_app)
 //   fault         audio device fault that recovers after 4 s
 //   invalid       a user pack with a warning, a broken user pack (selected, failed, so
-//                 Buckling Spring plays instead) and an invalid one
+//                 Tactile plays instead) and an invalid one
 //   empty         no packs at all (the built-in click plays)
 // Milestone 4:
 //   firstrun      a fresh install: the onboarding is not done yet (by default the mock is a
@@ -75,7 +75,7 @@ const manifests = import.meta.glob<Manifest>('../../packs/*/pack.json', {
 
 const DEFAULT_SETTINGS: Settings = {
   enabled: true,
-  packId: 'buckling-spring',
+  packId: 'tactile',
   masterVolume: 0.7,
   pressVolume: 1,
   releaseVolume: 1,
@@ -351,8 +351,8 @@ function initialState(scenarios: Set<string>): AppState {
 const BROKEN = 'half-done';
 
 /**
- * What the app's loader ends up with for the selected pack: the pack itself, else Buckling
- * Spring (the default), else any pack, else the built-in click, with `activePackError` saying why (catalog.rs).
+ * What the app's loader ends up with for the selected pack: the pack itself, else Tactile
+ * (the default), else any pack, else the built-in click, with `activePackError` saying why (catalog.rs).
  */
 function loadSelected(s: AppState): void {
   const selected = s.settings.packId;

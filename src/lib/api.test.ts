@@ -19,7 +19,7 @@ describe('api (mock backend)', () => {
     const unlisten = await api.onStateChanged((s) => events.push(s));
     try {
       const initial = await api.getState();
-      expect(initial.settings.packId).toBe('buckling-spring');
+      expect(initial.settings.packId).toBe('tactile');
 
       expect((await api.setEnabled(false)).settings.enabled).toBe(false);
       expect((await api.setEnabled(true)).settings.enabled).toBe(true);

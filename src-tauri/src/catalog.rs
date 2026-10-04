@@ -352,26 +352,28 @@ mod tests {
 
     #[test]
     fn candidates_follow_the_fallback_order() {
-        let packs = [info("a-board", "A Board"), info("buckling-spring", "Buckling Spring")];
-        assert_eq!(ids(&candidates("a-board", &packs)), ["a-board", "buckling-spring"]);
-        assert_eq!(ids(&candidates("buckling-spring", &packs)), ["buckling-spring", "a-board"]);
+        let packs = [info("a-board", "A Board"), info("tactile", "Tactile")];
+        assert_eq!(ids(&candidates("a-board", &packs)), ["a-board", "tactile"]);
+        assert_eq!(ids(&candidates("tactile", &packs)), ["tactile", "a-board"]);
         // A missing pack falls back to the default, then the rest by name.
-        assert_eq!(ids(&candidates("gone", &packs)), ["buckling-spring", "a-board"]);
+        assert_eq!(ids(&candidates("gone", &packs)), ["tactile", "a-board"]);
         let no_default = [info("a", "A"), info("b", "B"), info("c", "C"), info("d", "D")];
         assert_eq!(ids(&candidates("gone", &no_default)), ["a", "b", "c"]);
         assert_eq!(ids(&candidates("c", &no_default)), ["c", "a", "b"]);
-        assert!(candidates("buckling-spring", &[]).is_empty());
+        assert!(candidates("tactile", &[]).is_empty());
     }
 
     #[test]
     fn retired_packs_migrate_to_the_default_unless_installed() {
-        let packs = [info("buckling-spring", "Buckling Spring"), info("mine", "Mine")];
+        let packs = [info("tactile", "Tactile"), info("mine", "Mine")];
         for retired in RETIRED_PACK_IDS {
             assert_eq!(migrate_retired(retired, &packs), Some(DEFAULT_PACK_ID), "{retired}");
             assert_eq!(migrate_retired(retired, &[]), Some(DEFAULT_PACK_ID), "{retired}");
             // Installed as a user pack: the user's choice stands.
             let user = [PackInfo { origin: CoreOrigin::User, ..info(retired, "Mine") }];
             assert_eq!(migrate_retired(retired, &user), None, "{retired}");
+            // Bundled again by a later version: kept as well.
+            assert_eq!(migrate_retired(retired, &[info(retired, "Back")]), None, "{retired}");
         }
         // Other missing packs keep their selection (and their "not installed" message).
         assert_eq!(migrate_retired("gone", &packs), None);
@@ -381,15 +383,15 @@ mod tests {
 
     #[test]
     fn active_pack_error_explains_what_plays() {
-        let spring = info("buckling-spring", "Buckling Spring");
+        let default = info("tactile", "Tactile");
         let mine = info("my-board", "My Board");
-        let packs = [spring.clone(), mine.clone()];
+        let packs = [default.clone(), mine.clone()];
         assert_eq!(active_pack_error("my-board", &packs, Some(&mine), &[], None), None);
 
         let failures = [(mine.clone(), broken("/packs/my-board", "unsupported format"))];
         assert_eq!(
-            active_pack_error("my-board", &packs, Some(&spring), &failures, None).unwrap(),
-            "My Board could not be loaded: sounds/a.wav: unsupported format. Playing Buckling Spring \
+            active_pack_error("my-board", &packs, Some(&default), &failures, None).unwrap(),
+            "My Board could not be loaded: sounds/a.wav: unsupported format. Playing Tactile \
              instead."
         );
         assert_eq!(
@@ -398,19 +400,19 @@ mod tests {
              built-in click instead."
         );
         assert_eq!(
-            active_pack_error("gone\n", &packs, Some(&spring), &[], None).unwrap(),
-            "The pack “gone\\n” is not installed. Playing Buckling Spring instead."
+            active_pack_error("gone\n", &packs, Some(&default), &[], None).unwrap(),
+            "The pack “gone\\n” is not installed. Playing Tactile instead."
         );
         assert_eq!(
-            active_pack_error("buckling-spring", &[], None, &[], None).unwrap(),
+            active_pack_error("tactile", &[], None, &[], None).unwrap(),
             "No sound packs found. Playing the built-in click instead."
         );
         // Broken on disk: listed under the invalid packs, so not "not installed".
-        let only_spring = [spring.clone()];
+        let only_default = [default.clone()];
         assert_eq!(
-            active_pack_error("my-board", &only_spring, Some(&spring), &[], Some("My Board"))
+            active_pack_error("my-board", &only_default, Some(&default), &[], Some("My Board"))
                 .unwrap(),
-            "My Board has errors (see the invalid packs). Playing Buckling Spring instead."
+            "My Board has errors (see the invalid packs). Playing Tactile instead."
         );
         assert_eq!(
             active_pack_error("my-board", &[], None, &[], Some("My Board")).unwrap(),
@@ -454,7 +456,7 @@ mod tests {
     #[test]
     fn summaries_carry_warnings_features_and_invalid_packs() {
         let user = PackInfo { origin: CoreOrigin::User, ..info("mine", "Mine") };
-        let packs = [info("buckling-spring", "Buckling Spring"), user.clone()];
+        let packs = [info("tactile", "Tactile"), user.clone()];
         let entries = vec![
             PackEntry {
                 location: packs[0].location.clone(),
@@ -472,11 +474,10 @@ mod tests {
                 status: Err(broken("/user/broken.zip", "file not found")),
             },
         ];
-        let features =
-            |p: &Path| Features { has_release: p.ends_with("buckling-spring"), per_key: false };
+        let features = |p: &Path| Features { has_release: p.ends_with("tactile"), per_key: false };
         let (summaries, invalid) = summarize(&packs, &entries, features);
         assert_eq!(summaries.len(), 2);
-        assert_eq!(summaries[0].id, "buckling-spring");
+        assert_eq!(summaries[0].id, "tactile");
         assert!(summaries[0].has_release && summaries[0].warnings.is_empty());
         assert_eq!(summaries[1].origin, PackOrigin::User);
         assert!(!summaries[1].has_release);
@@ -543,7 +544,7 @@ mod tests {
         let v = view("mine", Some(("mine", "/u/mine")), None);
         let events = [
             RegistryEvent::Added(info("other", "Other")),
-            RegistryEvent::Updated(info("buckling-spring", "Buckling Spring")),
+            RegistryEvent::Updated(info("tactile", "Tactile")),
             removed("old", "/u/old"),
             RegistryEvent::Invalid(broken("/u/bad", "x")),
             RegistryEvent::InvalidCleared { location: "/u/bad2".into() },
@@ -563,7 +564,7 @@ mod tests {
             [removed("mine", "/u/mine"), RegistryEvent::Added(at(info("mine", "M"), "/x"))];
         assert_eq!(react(&events, &v), Reaction::Reload);
         // Came back while a fallback plays.
-        let v = view("mine", Some(("buckling-spring", "/b/buckling-spring")), None);
+        let v = view("mine", Some(("tactile", "/b/tactile")), None);
         let events = [RegistryEvent::Added(at(info("mine", "Mine"), "/u/mine"))];
         assert_eq!(react(&events, &v), Reaction::Reload);
     }
@@ -599,11 +600,8 @@ mod tests {
         let events = [removed("mine", "/u/mine"), RegistryEvent::Invalid(broken("/u/else", "x"))];
         assert_eq!(react(&events, &v), Reaction::Reload);
         // The fallback that plays went away.
-        let v = view("gone", Some(("buckling-spring", "/b/buckling-spring")), None);
-        assert_eq!(
-            react(&[removed("buckling-spring", "/b/buckling-spring")], &v),
-            Reaction::Reload
-        );
+        let v = view("gone", Some(("tactile", "/b/tactile")), None);
+        assert_eq!(react(&[removed("tactile", "/b/tactile")], &v), Reaction::Reload);
     }
 
     #[test]
@@ -611,10 +609,7 @@ mod tests {
         let v = view("gone", Some(("a-board", "/b/a-board")), None);
         let events = [RegistryEvent::Updated(at(info("a-board", "A"), "/b/a-board"))];
         assert_eq!(react(&events, &v), Reaction::Reload);
-        assert_eq!(
-            react(&[RegistryEvent::Added(info("buckling-spring", "D"))], &v),
-            Reaction::Reload
-        );
+        assert_eq!(react(&[RegistryEvent::Added(info("tactile", "D"))], &v), Reaction::Reload);
         // Built-in click: anything new is better.
         let v = view("gone", None, None);
         assert_eq!(react(&[RegistryEvent::Added(info("x", "X"))], &v), Reaction::Reload);
@@ -627,10 +622,7 @@ mod tests {
         // change from "has errors" to "not installed", or the pack may load again.
         let cleared = RegistryEvent::InvalidCleared { location: "/u/mine".into() };
         let invalid = RegistryEvent::Invalid(broken("/u/mine", "x"));
-        for v in [
-            view("mine", Some(("buckling-spring", "/b/buckling-spring")), None),
-            view("mine", None, None),
-        ] {
+        for v in [view("mine", Some(("tactile", "/b/tactile")), None), view("mine", None, None)] {
             assert_eq!(react(std::slice::from_ref(&cleared), &v), Reaction::Reload);
             assert_eq!(react(std::slice::from_ref(&invalid), &v), Reaction::Reload);
         }
@@ -642,11 +634,11 @@ mod tests {
     #[test]
     fn bundled_dir_prefers_the_resource_dir() {
         let dir = tempfile::tempdir().unwrap();
-        fs::create_dir_all(dir.path().join("packs/buckling-spring")).unwrap();
+        fs::create_dir_all(dir.path().join("packs/tactile")).unwrap();
         assert_eq!(bundled_dir(Some(dir.path())), Some(dir.path().join("packs")));
         // Debug builds fall back to the repository's packs when the resource dir has none.
         let empty = tempfile::tempdir().unwrap();
         let found = bundled_dir(Some(empty.path())).unwrap();
-        assert!(found.join("buckling-spring").join("pack.json").is_file(), "{}", found.display());
+        assert!(found.join("tactile").join("pack.json").is_file(), "{}", found.display());
     }
 }

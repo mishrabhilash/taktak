@@ -427,7 +427,7 @@ mod tests {
         assert!(model.enabled && model.muted);
         assert_eq!(model.status, None, "muted by hand: no status item");
         assert_eq!(model.hotkey.as_deref(), Some("CommandOrControl+Alt+Shift+M"));
-        assert_eq!(model.selected, "buckling-spring");
+        assert_eq!(model.selected, "tactile");
         assert_eq!(model.packs[0], ("typewriter".to_owned(), "Typewriter".to_owned()));
         assert_eq!(model.packs[1].1, "Evil\\nName");
     }
@@ -514,10 +514,7 @@ mod tests {
         assert_eq!(MenuAction::of(MENU_SETTINGS), Some(MenuAction::Settings));
         assert_eq!(MenuAction::of(MENU_WELCOME), Some(MenuAction::Welcome));
         assert_eq!(MenuAction::of(MENU_QUIT), Some(MenuAction::Quit));
-        assert_eq!(
-            MenuAction::of("pack:buckling-spring"),
-            Some(MenuAction::SelectPack("buckling-spring".into()))
-        );
+        assert_eq!(MenuAction::of("pack:tactile"), Some(MenuAction::SelectPack("tactile".into())));
         assert_eq!(MenuAction::of(MENU_PACKS), None);
         assert_eq!(MenuAction::of(MENU_NO_PACKS), None);
     }

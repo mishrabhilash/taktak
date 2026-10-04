@@ -1456,8 +1456,8 @@ mod tests {
         let (s, n) = (saved.clone(), notified.clone());
         let mut state = AppState::initial("0.1.0", Settings::default());
         state.packs.push(PackSummary {
-            id: "buckling-spring".into(),
-            name: "Buckling Spring".into(),
+            id: "tactile".into(),
+            name: "Tactile".into(),
             author: "A".into(),
             license: "CC0-1.0".into(),
             description: None,
@@ -1820,7 +1820,7 @@ mod tests {
             Err("nope".into())
         });
         assert_eq!(result.unwrap_err(), "nope");
-        assert_eq!(r.shared.settings().pack_id, "buckling-spring");
+        assert_eq!(r.shared.settings().pack_id, "tactile");
         assert!(r.notified.lock().unwrap().is_empty());
         assert!(r.saved.lock().unwrap().is_empty());
     }

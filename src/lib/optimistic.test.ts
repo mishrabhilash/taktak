@@ -7,7 +7,7 @@ function state(patch: Partial<AppState['settings']> = {}, top: Partial<AppState>
     version: '0.1.0',
     settings: {
       enabled: true,
-      packId: 'buckling-spring',
+      packId: 'tactile',
       masterVolume: 0.7,
       pressVolume: 1,
       releaseVolume: 1,
@@ -24,7 +24,7 @@ function state(patch: Partial<AppState['settings']> = {}, top: Partial<AppState>
     playing: true,
     packs: [],
     invalidPacks: [],
-    playingPackId: 'buckling-spring',
+    playingPackId: 'tactile',
     activePackError: null,
     muteHotkeyError: null,
     userPacksDir: null,
@@ -95,7 +95,7 @@ describe('Optimistic', () => {
     o.sent('packId', 'nope');
     expect(o.view?.settings.packId).toBe('nope');
     o.settled('packId', false);
-    expect(o.view?.settings.packId).toBe('buckling-spring');
+    expect(o.view?.settings.packId).toBe('tactile');
   });
 
   it('a slider is not pulled back by replies to its older values', () => {
@@ -118,7 +118,7 @@ describe('Optimistic', () => {
     o.event(state());
     const at = o.stamp;
     o.event(state({ packId: 'typewriter' }));
-    o.reply(state({ packId: 'buckling-spring' }), at);
+    o.reply(state({ packId: 'tactile' }), at);
     expect(o.view?.settings.packId).toBe('typewriter');
   });
 

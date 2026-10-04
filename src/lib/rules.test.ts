@@ -145,7 +145,7 @@ function appState(top: Partial<AppState>, appRule: AppRule): AppState {
     version: '0.1.0',
     settings: {
       enabled: true,
-      packId: 'buckling-spring',
+      packId: 'tactile',
       masterVolume: 0.7,
       pressVolume: 1,
       releaseVolume: 1,
@@ -161,7 +161,7 @@ function appState(top: Partial<AppState>, appRule: AppRule): AppState {
     playing: true,
     packs: [],
     invalidPacks: [],
-    playingPackId: 'buckling-spring',
+    playingPackId: 'tactile',
     activePackError: null,
     muteHotkeyError: null,
     userPacksDir: null,

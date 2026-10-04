@@ -240,6 +240,12 @@ fn scan(bundled: Option<&Path>) -> Result<(Vec<PackInfo>, String), String> {
             dir.display()
         ));
     }
+    if let Some(p) = packs.iter().find(|p| RETIRED_PACK_IDS.contains(&p.id.as_str())) {
+        return Err(format!(
+            "the bundled pack {} is listed in RETIRED_PACK_IDS: remove it from that list",
+            p.id
+        ));
+    }
     let detail = format!("{} packs in {}", packs.len(), dir.display());
     Ok((packs, detail))
 }
@@ -769,7 +775,8 @@ fn retired_selection(
     scratch: &Path,
     playback: bool,
 ) -> Result<((), String), String> {
-    let retired = RETIRED_PACK_IDS[0];
+    // The most recently retired pack: the previous default.
+    let retired = RETIRED_PACK_IDS[RETIRED_PACK_IDS.len() - 1];
     let settings_path = scratch.join("retired").join(settings::FILE_NAME);
     let config = Config {
         version: "selftest".into(),

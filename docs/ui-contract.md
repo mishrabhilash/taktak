@@ -263,7 +263,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 ## Behaviour rules
 
 - Settings persist to `<app config dir>/settings.json` (atomic write, debounced ~300 ms).
-  Missing/corrupt file → defaults (`buckling-spring`, master 0.7, press/release 1.0, consistent,
+  Missing/corrupt file → defaults (`tactile`, master 0.7, press/release 1.0, consistent,
   humanize 0.25, hotkey `CommandOrControl+Alt+Shift+M`, launch at login off, enabled on;
   **(M4)** `appRule` `{ mode: "everywhere", apps: [] }`, `muteOnOutputChange` false,
   `onboardingDone` false).
@@ -277,13 +277,16 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
   missing, wrong-typed or empty `name` becomes the id; entries past the 200th are dropped. Unknown
   fields, at the top level and inside entries, are ignored (and not written back).
 - **Retired packs.** Earlier versions bundled three synthesized packs, `deep-thock` (then the
-  default), `crisp-clack` and `blue-click`, which are no longer shipped. On startup, once the
-  packs are scanned and before the first load, a saved `packId` naming one of them moves
-  silently to the default `buckling-spring` and is saved, so no `activePackError` appears for
-  users whose old default went away (Rust: `catalog::migrate_retired`, called from the control
-  thread's start in `service.rs`). If a user pack with that id is installed, the selection is
-  kept. Any other missing pack takes the normal fallback below.
-- If the saved pack no longer exists, fall back to `buckling-spring`, then to any pack, then to
+  default), `crisp-clack` and `blue-click`, and later `buckling-spring` (the default after
+  them, withheld pending its author's confirmation), which are no longer shipped
+  (`RETIRED_PACK_IDS` in `state.rs`). On startup, once the packs are scanned and before the
+  first load, a saved `packId` naming one of them moves silently to the default `tactile` and
+  is saved, so no `activePackError` appears for users whose old default went away (Rust:
+  `catalog::migrate_retired`, called from the control thread's start in `service.rs`). If a
+  pack with that id is installed (a user pack, or a bundled one), the selection is kept. A
+  version that bundles one of them again must remove it from `RETIRED_PACK_IDS` (the selftest
+  fails otherwise). Any other missing pack takes the normal fallback below.
+- If the saved pack no longer exists, fall back to `tactile`, then to any pack, then to
   the built-in click; set `activePackError` when a selected pack fails to load. `settings.packId`
   keeps the user's choice; `playingPackId` says what actually plays (Rust:
   `AppState::playing_pack_id`, set where the control thread swaps a bank in, `on_bank` in

@@ -151,12 +151,11 @@
               <label for="try-pack">Sound pack</label>
               <select id="try-pack" name="pack">
                 <!-- packs:options:start -->
-                <option value="buckling-spring" selected>Buckling Spring</option>
+                <option value="tactile" selected>Tactile</option>
                 <option value="key-press">Key Press</option>
                 <option value="linear-red">Linear Red</option>
                 <option value="office-classic">Office Classic</option>
                 <option value="spring-lite">Spring Lite</option>
-                <option value="tactile">Tactile</option>
                 <option value="typewriter">Typewriter</option>
                 <option value="ui-clicks">UI Clicks</option>
                 <option value="vintage-keyboard">Vintage</option>
@@ -178,19 +177,19 @@
           </p>
         </div>
 
-        <h3 class="sub-title" id="packs-title">The 9 bundled packs <span class="sub-note">click to hear</span></h3>
+        <h3 class="sub-title" id="packs-title">The 8 bundled packs <span class="sub-note">click to hear</span></h3>
         <ul class="packs" aria-labelledby="packs-title">
           <!-- packs:cards:start -->
-          <li class="pack" data-pack="buckling-spring" data-volume="0.96" data-pitch="0.015" data-var-volume="0.06">
+          <li class="pack" data-pack="tactile" data-volume="0.98" data-pitch="0.015" data-var-volume="0.06">
             <div class="pack-head">
-              <h4 class="pack-name">Buckling Spring</h4>
-              <a class="badge badge-mit" data-repo="/blob/main/CREDITS.md#buckling-spring-buckling-spring" href="#credits" title="License: MIT (credits)">MIT</a>
+              <h4 class="pack-name">Tactile</h4>
+              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#tactile-tactile" href="#credits" title="License: CC0 (credits)">CC0</a>
             </div>
-            <p class="pack-blurb">The ping and clack of a classic buckling-spring board, every key sampled down and up.</p>
-            <p class="pack-credit">Recorded by Ico Doornekamp (bucklespring). <a href="assets/sounds/buckling-spring/LICENSE.txt">License text</a></p>
+            <p class="pack-blurb">Bright, snappy tactile switches with a separate key-up.</p>
+            <p class="pack-credit">Recorded by StavSounds, alpinemesh, yottasounds. CC0: no credit required, given with thanks.</p>
             <div class="pack-actions">
-              <button type="button" class="btn btn-play" data-preview="buckling-spring" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Buckling Spring preview</span></button>
-              <button type="button" class="btn btn-ghost" data-try="buckling-spring">Type with it<span class="visually-hidden">: Buckling Spring</span></button>
+              <button type="button" class="btn btn-play" data-preview="tactile" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Tactile preview</span></button>
+              <button type="button" class="btn btn-ghost" data-try="tactile">Type with it<span class="visually-hidden">: Tactile</span></button>
             </div>
           </li>
           <li class="pack" data-pack="key-press" data-volume="1.14" data-pitch="0.015" data-var-volume="0.06">
@@ -239,18 +238,6 @@
             <div class="pack-actions">
               <button type="button" class="btn btn-play" data-preview="spring-lite" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Spring Lite preview</span></button>
               <button type="button" class="btn btn-ghost" data-try="spring-lite">Type with it<span class="visually-hidden">: Spring Lite</span></button>
-            </div>
-          </li>
-          <li class="pack" data-pack="tactile" data-volume="0.98" data-pitch="0.015" data-var-volume="0.06">
-            <div class="pack-head">
-              <h4 class="pack-name">Tactile</h4>
-              <a class="badge badge-cc0" data-repo="/blob/main/CREDITS.md#tactile-tactile" href="#credits" title="License: CC0 (credits)">CC0</a>
-            </div>
-            <p class="pack-blurb">Bright, snappy tactile switches with a separate key-up.</p>
-            <p class="pack-credit">Recorded by StavSounds, alpinemesh, yottasounds. CC0: no credit required, given with thanks.</p>
-            <div class="pack-actions">
-              <button type="button" class="btn btn-play" data-preview="tactile" aria-pressed="false"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span class="btn-text">Play</span><span class="visually-hidden"> Tactile preview</span></button>
-              <button type="button" class="btn btn-ghost" data-try="tactile">Type with it<span class="visually-hidden">: Tactile</span></button>
             </div>
           </li>
           <li class="pack" data-pack="typewriter" data-volume="1.29" data-pitch="0.015" data-var-volume="0.06">
@@ -338,7 +325,7 @@
           <li class="feature">
             <svg class="icon icon-lg" aria-hidden="true"><use href="#i-wave"/></svg>
             <h3>Real press and release</h3>
-            <p>Each key gets its own key-down <em>and</em> key-up sound where the recording has them, from 9 recorded packs: buckling spring to typewriter.</p>
+            <p>Each key gets its own key-down <em>and</em> key-up sound where the recording has them, from 8 recorded packs: tactile switches to a typewriter.</p>
           </li>
           <li class="feature">
             <svg class="icon icon-lg" aria-hidden="true"><use href="#i-bolt"/></svg>
@@ -398,7 +385,7 @@
           <figure class="shot">
             <picture>
               <source srcset="assets/screenshots/sounds-dark.webp" media="(prefers-color-scheme: dark)">
-              <img src="assets/screenshots/sounds-light.webp" width="1000" height="784" loading="lazy" decoding="async" alt="Settings, Sounds: the nine bundled packs as cards, each with its author, a short description and its license.">
+              <img src="assets/screenshots/sounds-light.webp" width="1000" height="784" loading="lazy" decoding="async" alt="Settings, Sounds: the eight bundled packs as cards, each with its author, a short description and its license.">
             </picture>
             <figcaption>Settings → Sounds</figcaption>
           </figure>

@@ -91,7 +91,7 @@ builds are then signed ad hoc and Windows builds are unsigned.
 The macOS bundle contains:
 
 - `Contents/MacOS/taktak`.
-- `Contents/Resources/packs/<id>/…`: the 9 bundled packs, copied from `packs/` (`bundle.resources`).
+- `Contents/Resources/packs/<id>/…`: the 8 bundled packs, copied from `packs/` (`bundle.resources`).
 - `Contents/Resources/CREDITS.md`, `THIRD_PARTY_NOTICES.md` and `LICENSE` (`bundle.resources`).
 - `Contents/Resources/icon.icns`. The tray icons are compiled into the binary.
 - `Info.plist` with:
@@ -172,7 +172,7 @@ The self-test is headless: no windows, no tray and no keyboard listener. It:
 - checks that settings are saved, reloaded and recovered from a corrupt file, and that a Milestone 3 file migrates (new fields defaulted, onboarding counted as done, a damaged rule list keeps its good entries);
 - drives the real service through pack switches, rejected ids, level clamping, mute and enable, a per-app rule closing the gate, and a hot-reloaded user pack that is selected, then broken on disk, then deleted;
 - checks that the service keeps the output closed while nothing can play, that a preview (at volume 0) opens it, and that it closes again when the preview is stopped and when the clip ends. Without an output device it checks that the preview is refused with a message;
-- starts a service whose settings select a pack TakTak no longer bundles (`deep-thock`) and checks that it moves to the default pack (Buckling Spring) silently, without `activePackError`, and saves that;
+- starts a service whose settings select a pack TakTak no longer bundles (the most recently retired one, `buckling-spring`) and checks that it moves to the default pack (Tactile) silently, without `activePackError`, and saves that;
 - starts a second service while the user pack is broken and checks that it names the pack as broken rather than missing;
 - imports a synthetic Mechvibes pack into its user packs folder (the in-app import without the picker) and checks that hot reload lists it as a personal (`LicenseRef-Personal`) user pack, that a second import is recognized as already imported, and that the overwrite replaces it;
 - checks that settings are saved on shutdown.
@@ -238,7 +238,7 @@ still needs a clean rerun.
 
 **Startup:** 12 packs scanned in 26 ms, and Deep Thock loaded in 19 ms. (Measured when TakTak
 still bundled the three synthesized packs and Deep Thock was the default. The default is now
-Buckling Spring, 9 packs ship, and Buckling Spring's own load at 48 kHz is about 25 ms; see
+Tactile, 8 packs ship, and Tactile's own load at 48 kHz is about 10 ms; see
 the load-time table in [architecture.md](architecture.md).)
 
 **Milestone 4 smoke run** (release bundle built into a separate target directory, `TAKTAK_NO_INPUT=1 TAKTAK_LOG=debug`, a throwaway `HOME`, about 12 s, then SIGTERM):

@@ -29,7 +29,7 @@ speakers.
      The screenshots are retaken with `node scripts/screenshots.mjs` (see website/README.md). -->
 <p align="center">
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/tray-dark.png"><img src="docs/assets/screenshots/tray-light.png" width="200" alt="The menu-bar popover: an on switch, the volume, mute with its shortcut, and the sound packs, each with a play button."></picture>
-  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/sounds-dark.png"><img src="docs/assets/screenshots/sounds-light.png" width="335" alt="Settings, Sounds: the nine bundled packs as cards with author, description and license."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/sounds-dark.png"><img src="docs/assets/screenshots/sounds-light.png" width="335" alt="Settings, Sounds: the eight bundled packs as cards with author, description and license."></picture>
   <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/welcome-dark.png"><img src="docs/assets/screenshots/welcome-light.png" width="267" alt="The welcome window once Input Monitoring is allowed: You're all set, start typing."></picture>
 </p>
 <p align="center">
@@ -80,8 +80,8 @@ Monitoring**. You can revoke it at any time; TakTak just goes quiet.
 
 ## Features
 
-- 🎹 **9 recorded sound packs** bundled, from a buckling-spring board to a typewriter (below).
-  Each key gets its own press *and* release sound where the recording has them.
+- 🎹 **8 recorded sound packs** bundled, from tactile switches to a typewriter (below).
+  Keys play a press *and* a release sound where the recording has them.
 - ⚡ **Low latency**: a dedicated real-time audio path with a 64-frame buffer (numbers below).
 - 🎚️ **Tray popover** to switch packs, change the volume, mute, and hear a pack before choosing it.
 - ⚙️ **Settings**: master, press and release volume, "humanize" (subtle pitch and volume
@@ -150,12 +150,11 @@ changes and provenance are in **[CREDITS.md](CREDITS.md)**.
 
 | Pack | Sounds like | License | Recorded by |
 |---|---|---|---|
-| **Buckling Spring** (default) | The ping and clack of a classic buckling-spring board, every key sampled down and up | MIT | Ico Doornekamp (bucklespring) |
 | **Key Press** | Light, crisp ticks; an older board thumping under Space and the modifiers | CC BY 3.0 | eklee, qubodup, bluszcz |
 | **Linear Red** | Fast typing on red linear switches, short letter clacks and a deeper space bar | CC BY 4.0 | C40115 |
 | **Office Classic** | The soft, rounded clack of an everyday office membrane keyboard | CC0 | unicaegames |
 | **Spring Lite** | A compact, lighter buckling-spring board: bright clicks, softer up-strokes | CC0 | Anonimski |
-| **Tactile** | Bright, snappy tactile switches with a separate key-up | CC0 | StavSounds, alpinemesh, yottasounds |
+| **Tactile** (default) | Bright, snappy tactile switches with a separate key-up | CC0 | StavSounds, alpinemesh, yottasounds |
 | **Typewriter** | A portable manual typewriter, with a carriage return and bell on Enter | CC0 | Joseph Sardin (BigSoundBank) |
 | **UI Clicks** | Not a keyboard: crisp interface clicks and a two-note blip on Enter | CC0 | Kenney |
 | **Vintage** | Crisp clacks from a 1986 DOS-era mechanical keyboard | CC0 | jim-ph |

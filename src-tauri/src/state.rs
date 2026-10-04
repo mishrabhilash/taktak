@@ -9,11 +9,15 @@ use taktak_core::audio::{DEFAULT_HUMANIZE, VariantMode as CoreVariantMode};
 use taktak_core::pack::PackOrigin as CorePackOrigin;
 
 /// The pack selected when nothing else is (fresh install, saved pack gone).
-pub const DEFAULT_PACK_ID: &str = "buckling-spring";
+pub const DEFAULT_PACK_ID: &str = "tactile";
 /// Packs earlier versions bundled (and selected by default) that TakTak no longer ships. A
-/// saved selection of one of them that is not installed (as a user pack) moves to
-/// [`DEFAULT_PACK_ID`] silently instead of reporting a missing pack.
-pub const RETIRED_PACK_IDS: [&str; 3] = ["deep-thock", "crisp-clack", "blue-click"];
+/// saved selection of one of them that no installed pack has (bundled or user) moves to
+/// [`DEFAULT_PACK_ID`] silently instead of reporting a missing pack; a pack of that id that is
+/// installed keeps the selection. `buckling-spring` is withheld pending its author's
+/// confirmation (`tools/pack-sources/buckling-spring/`): bundling it again means removing it
+/// from this list.
+pub const RETIRED_PACK_IDS: [&str; 4] =
+    ["deep-thock", "crisp-clack", "blue-click", "buckling-spring"];
 /// The mute hotkey on a fresh install.
 pub const DEFAULT_MUTE_HOTKEY: &str = "CommandOrControl+Alt+Shift+M";
 /// TakTak's own bundle identifier: never a rule entry, and never reported as `frontmostApp`.
@@ -402,7 +406,7 @@ mod tests {
             json,
             serde_json::json!({
                 "enabled": true,
-                "packId": "buckling-spring",
+                "packId": "tactile",
                 "masterVolume": 0.7,
                 "pressVolume": 1.0,
                 "releaseVolume": 1.0,

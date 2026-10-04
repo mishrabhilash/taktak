@@ -294,7 +294,7 @@ function playKey(pack, code, action) {
 }
 
 // --- The "type here" box --------------------------------------------------------------
-let selectedPack = 'buckling-spring';
+let selectedPack = 'tactile';
 const held = new Set();
 let lastKeydown = 0;
 

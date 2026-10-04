@@ -31,23 +31,6 @@ Every bundled pack is made from recordings. (Earlier versions also shipped three
 packs; they are no longer bundled, and their experimental generator,
 [`tools/synth-packs/`](tools/synth-packs/), does not write into `packs/`.)
 
-### Buckling Spring (`buckling-spring`)
-
-- **License:** MIT. Copyright (c) 2016 - Ico Doornekamp. The full license text is in
-  [`packs/buckling-spring/LICENSE.txt`](packs/buckling-spring/LICENSE.txt), which ships with
-  the pack.
-- **Credit:** Buckling-spring keyboard samples by Ico Doornekamp (bucklespring), MIT License.
-- **Original work:** the `wav/` samples of [bucklespring](https://github.com/zevv/bucklespring)
-  by Ico Doornekamp, recorded on his IBM Model M space saver, at commit
-  [`63b3d5b`](https://github.com/zevv/bucklespring/tree/63b3d5b8ea84b426b466146ced5cbf85fe3bc0cb/wav),
-  the last commit whose license is MIT
-  ([license at that commit](https://github.com/zevv/bucklespring/blob/63b3d5b8ea84b426b466146ced5cbf85fe3bc0cb/LICENSE)).
-  Later bucklespring commits are GPL-2.0 and are not used.
-- **Changes:** each key's press and release sample trimmed (no leading silence, tail faded
-  out), high-passed at 25 Hz, one gain for the whole pack, mono 16-bit at the original 44.1 kHz
-  (bucklespring's stereo panning is not reproduced); played at a pack volume of 0.96.
-- **Provenance:** [`packs/buckling-spring/SOURCES.md`](packs/buckling-spring/SOURCES.md).
-
 ### Key Press (`key-press`)
 
 - **License:** [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) (SPDX `CC-BY-3.0`).

@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# WITHHELD: TakTak does not currently ship this pack. It is withheld pending the confirmation of
+# bucklespring's author (Ico Doornekamp) that the MIT-era sample snapshot may be bundled. These
+# scripts stay so the pack can be rebuilt once that is confirmed. To bundle it again: build it into
+# packs/buckling-spring, remove "buckling-spring" from RETIRED_PACK_IDS (src-tauri/src/state.rs),
+# and restore its entries in CREDITS.md, README.md and the website.
+#
 # Fetches the inputs of the "Buckling Spring" pack (id buckling-spring): only wav/*.wav and
 # LICENSE from bucklespring at commit 63b3d5b8ea84b426b466146ced5cbf85fe3bc0cb, the last commit
 # whose LICENSE is MIT. Later commits are GPL-2.0, and the keypad samples added later are

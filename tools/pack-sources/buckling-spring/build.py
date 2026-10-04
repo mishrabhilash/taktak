@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Builds the TakTak "Buckling Spring" pack (id buckling-spring) from the bucklespring samples.
 
+WITHHELD: TakTak does not currently ship this pack. It is withheld pending the confirmation of
+bucklespring's author (Ico Doornekamp) that the MIT-era sample snapshot may be bundled. This script
+stays so the pack can be rebuilt once that is confirmed. To bundle it again: build it into
+packs/buckling-spring, remove "buckling-spring" from RETIRED_PACK_IDS (src-tauri/src/state.rs),
+and restore its entries in CREDITS.md, README.md and the website (website/tools/build_sounds.py).
+
 Source: bucklespring by Ico Doornekamp, wav/ at commit 63b3d5b8ea84b426b466146ced5cbf85fe3bc0cb,
 the last commit whose LICENSE is MIT. Fetch the inputs with fetch.sh, then:
 

@@ -17,7 +17,7 @@ function state(top: Partial<AppState> = {}, enabled = true): AppState {
     version: '0.1.0',
     settings: {
       enabled,
-      packId: 'buckling-spring',
+      packId: 'tactile',
       masterVolume: 0.7,
       pressVolume: 1,
       releaseVolume: 1,
@@ -33,7 +33,7 @@ function state(top: Partial<AppState> = {}, enabled = true): AppState {
     playing: true,
     packs: [],
     invalidPacks: [],
-    playingPackId: 'buckling-spring',
+    playingPackId: 'tactile',
     activePackError: null,
     muteHotkeyError: null,
     userPacksDir: null,
@@ -372,26 +372,26 @@ function pack(id: string, name: string): PackSummary {
 }
 
 describe('playingName', () => {
-  const packs = [pack('buckling-spring', 'Buckling Spring'), pack('my-board', 'My Board')];
+  const packs = [pack('tactile', 'Tactile'), pack('my-board', 'My Board')];
 
   it('names the pack that plays, which is the selected one when all is well', () => {
-    expect(playingName(state({ packs }))).toBe('Buckling Spring');
+    expect(playingName(state({ packs }))).toBe('Tactile');
   });
 
   it('names the fallback pack, not the built-in click, when the selected pack is missing', () => {
     const s = state({
       packs,
-      playingPackId: 'buckling-spring',
-      activePackError: 'The pack “gone” is not installed. Playing Buckling Spring instead.',
+      playingPackId: 'tactile',
+      activePackError: 'The pack “gone” is not installed. Playing Tactile instead.',
     });
     s.settings.packId = 'gone';
-    expect(playingName(s)).toBe('Buckling Spring');
+    expect(playingName(s)).toBe('Tactile');
   });
 
   it('names the selected pack while its last working version keeps playing', () => {
     // A pack that broke on disk leaves the list but keeps playing: its id is all there is.
     const s = state({
-      packs: [pack('buckling-spring', 'Buckling Spring')],
+      packs: [pack('tactile', 'Tactile')],
       playingPackId: 'my-board',
       activePackError: 'My Board has errors … Its last working version keeps playing.',
     });

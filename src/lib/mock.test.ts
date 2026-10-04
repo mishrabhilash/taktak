@@ -31,7 +31,7 @@ describe('mock backend', () => {
     const s = await call(backend.call('get_state', undefined));
     expect(s.settings).toEqual({
       enabled: true,
-      packId: 'buckling-spring',
+      packId: 'tactile',
       masterVolume: 0.7,
       pressVolume: 1,
       releaseVolume: 1,
@@ -57,19 +57,16 @@ describe('mock backend', () => {
     });
     expect(s.permission).toBe('granted');
     expect(s.audio.state).toBe('ok');
-    expect(s.packs).toHaveLength(9);
+    expect(s.packs).toHaveLength(8);
     const names = s.packs.map((p) => p.name);
     expect(names).toEqual([...names].sort((a, b) => a.localeCompare(b)));
     expect(s.packs.every((p) => p.origin === 'bundled' && p.warnings.length === 0)).toBe(true);
+    expect(s.packs.some((p) => p.perKey)).toBe(false);
+    expect(s.packs.some((p) => p.id === 'tactile')).toBe(true);
+    // The packs earlier versions bundled are gone (Buckling Spring is withheld for now).
     expect(
-      s.packs
-        .filter((p) => p.perKey)
-        .map((p) => p.id)
-        .sort(),
-    ).toEqual(['buckling-spring']);
-    expect(s.packs.some((p) => p.id === 'buckling-spring')).toBe(true);
-    // The synthesized packs earlier versions bundled are gone.
-    expect(s.packs.some((p) => ['deep-thock', 'crisp-clack', 'blue-click'].includes(p.id))).toBe(false);
+      s.packs.some((p) => ['deep-thock', 'crisp-clack', 'blue-click', 'buckling-spring'].includes(p.id)),
+    ).toBe(false);
   });
 
   it('applies a command, replies with the new state and emits it after the reply', async () => {
@@ -101,7 +98,7 @@ describe('mock backend', () => {
     const reply = await call(backend.call('set_pack', { id: 'typewriter' }));
     expect(reply.settings.packId).toBe('typewriter');
     // Like the app: the old pack plays until the new one is swapped in.
-    expect(reply.playingPackId).toBe('buckling-spring');
+    expect(reply.playingPackId).toBe('tactile');
     const before = events.length;
     await settle(200);
     expect(events.length).toBe(before + 1);
@@ -169,7 +166,7 @@ describe('mock backend', () => {
     await call(backend.call('stop_preview', undefined));
     expect(pause).toHaveBeenCalledOnce();
     const s = await call(backend.call('get_state', undefined));
-    expect(s.settings.packId).toBe('buckling-spring');
+    expect(s.settings.packId).toBe('tactile');
   });
 
   it('get_latency is null until 5 presses, then reports timings only', async () => {
@@ -234,8 +231,8 @@ describe('mock backend', () => {
     expect(s.packs.filter((p) => p.origin === 'user')).toHaveLength(2);
     expect(s.settings.packId).toBe('half-done');
     // The selected pack failed, so the fallback plays and the error names it.
-    expect(s.playingPackId).toBe('buckling-spring');
-    expect(s.activePackError).toMatch(/^Half Done could not be loaded: .* Playing Buckling Spring instead\.$/);
+    expect(s.playingPackId).toBe('tactile');
+    expect(s.activePackError).toMatch(/^Half Done could not be loaded: .* Playing Tactile instead\.$/);
     expect(s.invalidPacks).toHaveLength(1);
     expect(s.invalidPacks[0]?.problems.length).toBeGreaterThan(0);
     const fixed = await call(backend.call('set_pack', { id: 'my-board' }));
@@ -243,11 +240,11 @@ describe('mock backend', () => {
     await settle(200);
     expect(events.at(-1)?.playingPackId).toBe('my-board');
     expect(events.at(-1)?.activePackError).toBeNull();
-    // Choosing the broken pack again fails again, and Buckling Spring plays instead.
+    // Choosing the broken pack again fails again, and Tactile plays instead.
     await call(backend.call('set_pack', { id: 'half-done' }));
     await settle(200);
-    expect(events.at(-1)?.playingPackId).toBe('buckling-spring');
-    expect(events.at(-1)?.activePackError).toMatch(/Playing Buckling Spring instead/);
+    expect(events.at(-1)?.playingPackId).toBe('tactile');
+    expect(events.at(-1)?.activePackError).toMatch(/Playing Tactile instead/);
   });
 
   it('scenario "empty": no packs, the built-in click plays', async () => {
@@ -549,7 +546,7 @@ describe('mock backend', () => {
     s.packs.length = 0;
     const again = await call(backend.call('get_state', undefined));
     expect(again.settings.masterVolume).toBe(0.7);
-    expect(again.packs).toHaveLength(9);
+    expect(again.packs).toHaveLength(8);
   });
 
   it('stops emitting to a listener after unsubscribe', async () => {
