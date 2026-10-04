@@ -1,15 +1,43 @@
-# TakTak
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/banner-dark.svg">
+    <img src="docs/assets/banner.svg" width="100%" alt="TakTak (टक-टक): Your keyboard, but it goes TakTak. Fully offline · never uses the internet.">
+  </picture>
+</p>
 
-**Your keyboard, but it goes TakTak.** (टक-टक)
+<p align="center">
+  <a href="https://github.com/mishrabhilash/taktak/actions/workflows/ci.yml"><img src="https://github.com/mishrabhilash/taktak/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="LICENSE"><img src="docs/assets/badges/license.svg" alt="License: MIT"></a>
+  <a href="#install"><img src="docs/assets/badges/platforms.svg" alt="Platforms: macOS, Windows, Linux"></a>
+  <a href="CONTRIBUTING.md#privacy-rules"><img src="docs/assets/badges/privacy.svg" alt="Privacy: fully offline"></a>
+</p>
+
+<p align="center">
+  <a href="https://github.com/mishrabhilash/taktak/releases/latest"><b>Download</b></a> ·
+  <a href="https://mishrabhilash.github.io/taktak/"><b>Website</b></a> (<a href="https://taktak.tech">taktak.tech</a>, hear every pack there) ·
+  <a href="#bundled-sound-packs">Sound packs</a> ·
+  <a href="#add-your-own-pack">Make your own</a>
+</p>
 
 TakTak lives in your menu bar or system tray and plays mechanical keyboard sounds as you type,
 in every app, with about 6 ms between the key going down and the click coming out of the
 speakers.
 
 <!-- TODO: demo GIF. Record the tray popover switching packs while typing (~10 s, < 3 MB),
-     save it as docs/images/demo.gif and replace the line below with:
-     ![TakTak switching packs while typing](docs/images/demo.gif) -->
-*Demo GIF coming soon.*
+     save it as docs/images/demo.gif and add it above the screenshots:
+     ![TakTak switching packs while typing](docs/images/demo.gif)
+     The screenshots are retaken with `node scripts/screenshots.mjs` (see website/README.md). -->
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/tray-dark.png"><img src="docs/assets/screenshots/tray-light.png" width="200" alt="The menu-bar popover: an on switch, the volume, mute with its shortcut, and the sound packs, each with a play button."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/sounds-dark.png"><img src="docs/assets/screenshots/sounds-light.png" width="335" alt="Settings, Sounds: the nine bundled packs as cards with author, description and license."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/welcome-dark.png"><img src="docs/assets/screenshots/welcome-light.png" width="267" alt="The welcome window once Input Monitoring is allowed: You're all set, start typing."></picture>
+</p>
+<p align="center">
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/apps-dark.png"><img src="docs/assets/screenshots/apps-light.png" width="351" alt="Settings, Apps: never play in Slack and zoom.us; silent right now because Slack is in front."></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="docs/assets/screenshots/volume-dark.png"><img src="docs/assets/screenshots/volume-light.png" width="426" alt="Settings, Volume: master, key press and key release volume sliders."></picture>
+</p>
+<p align="center"><sub>The popover, Settings → Sounds, the welcome window, per-app rules and the volume
+settings (macOS; light or dark follows your system).</sub></p>
 
 > [!IMPORTANT]
 > **TakTak is fully offline — it never uses the internet.**
@@ -28,6 +56,19 @@ speakers.
 > The app says the same, in the same words, in its welcome window, in Settings → About and at
 > the bottom of the tray popover.
 
+## How it works
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/how-it-works-dark.svg">
+    <img src="docs/assets/how-it-works.svg" width="760" alt="A key goes down; TakTak, on your computer and offline, learns only which physical key it was and plays that key's press and release sound about 6 ms later. Nothing goes to the internet, and nothing is stored, logged or sent.">
+  </picture>
+</p>
+
+A key goes down, the system tells TakTak *which* physical key it was, and TakTak plays that
+key's sound from the pack you picked, all on your machine. Nothing in that path touches the
+network.
+
 ## Why it needs keyboard access
 
 To click when you press a key in *another* app, TakTak has to be told that a key was pressed
@@ -39,20 +80,20 @@ Monitoring**. You can revoke it at any time; TakTak just goes quiet.
 
 ## Features
 
-- **9 recorded sound packs** bundled, from a buckling-spring board to a typewriter (below).
+- 🎹 **9 recorded sound packs** bundled, from a buckling-spring board to a typewriter (below).
   Each key gets its own press *and* release sound where the recording has them.
-- **Low latency**: a dedicated real-time audio path with a 64-frame buffer (numbers below).
-- **Tray popover** to switch packs, change the volume, mute, and hear a pack before choosing it.
-- **Settings**: master, press and release volume, "humanize" (subtle pitch and volume
+- ⚡ **Low latency**: a dedicated real-time audio path with a 64-frame buffer (numbers below).
+- 🎚️ **Tray popover** to switch packs, change the volume, mute, and hear a pack before choosing it.
+- ⚙️ **Settings**: master, press and release volume, "humanize" (subtle pitch and volume
   variation), consistent or random sample variants, a global mute hotkey, launch at login.
-- **Per-app rules** (macOS): sounds everywhere, only in some apps, or never in some apps.
-- **Auto-mute**: always silent on the lock screen and during fast user switching; optionally
+- 🪟 **Per-app rules** (macOS): sounds everywhere, only in some apps, or never in some apps.
+- 🔒 **Auto-mute**: always silent on the lock screen and during fast user switching; optionally
   mutes itself when the output device changes (say, when headphones disconnect in a meeting).
   Password fields are always silent on macOS (Secure Input).
-- **Your own packs**: drop a folder or a `.zip` into the user packs folder and it appears
+- 📦 **Your own packs**: drop a folder or a `.zip` into the user packs folder and it appears
   within a second, no restart. An open, documented [pack format](docs/pack-format.md).
-- **Import Mechvibes packs** for personal use (below).
-- **Light on the system**: the audio stream and the keyboard listener are closed whenever no
+- 🔁 **Import Mechvibes packs** for personal use (below).
+- 🍃 **Light on the system**: the audio stream and the keyboard listener are closed whenever no
   sound can play (sounds off, muted, locked), so the audio device can sleep.
 
 ## Install
@@ -219,6 +260,7 @@ TakTak's code is released under the [MIT License](LICENSE). The bundled sound pa
 the `LICENSE.txt` and `SOURCES.md` in each pack folder). Third-party software:
 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-Website: [taktak.tech](https://taktak.tech). Its source is the static page in [`website/`](website/)
+Website: [taktak.tech](https://taktak.tech) (also at
+[mishrabhilash.github.io/taktak](https://mishrabhilash.github.io/taktak/)). Its source is the static page in [`website/`](website/)
 (no build step, no trackers, and you can hear every bundled pack there); how to preview and
 deploy it is in [website/README.md](website/README.md).

@@ -18,14 +18,14 @@
   <meta property="og:url" content="https://taktak.tech/">
   <meta property="og:title" content="TakTak: your keyboard, but it goes TakTak">
   <meta property="og:description" content="Real mechanical keyboard sounds as you type, in every app. A tiny open-source menu-bar app for macOS, Windows and Linux. Fully offline: it never uses the internet.">
-  <meta property="og:image" content="https://taktak.tech/assets/og-image.png">
+  <meta property="og:image" content="https://taktak.tech/assets/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="An orange TakTak keycap next to the words: Your keyboard, but it goes TakTak. Fully offline.">
+  <meta property="og:image:alt" content="The orange TakTak keycap next to the words TakTak, टक-टक, Your keyboard, but it goes TakTak, and Fully offline · never uses the internet.">
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="TakTak: your keyboard, but it goes TakTak">
   <meta name="twitter:description" content="Real mechanical keyboard sounds as you type, in every app. Open source, fully offline.">
-  <meta name="twitter:image" content="https://taktak.tech/assets/og-image.png">
+  <meta name="twitter:image" content="https://taktak.tech/assets/og.png">
 
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
   <link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
@@ -73,6 +73,7 @@
         <a href="#try">Hear it</a>
         <a href="#privacy">Privacy</a>
         <a href="#features">Features</a>
+        <a href="#see">See it</a>
         <a href="#make">Make a pack</a>
         <a href="#download">Download</a>
       </nav>
@@ -375,6 +376,55 @@
             <p>macOS 11+ (Apple silicon and Intel), Windows 10/11 and Linux (X11 and Wayland). Light on the system: idle, it closes the audio device.</p>
           </li>
         </ul>
+      </div>
+    </section>
+
+    <!-- SEE IT: screenshots from the app's own UI (retake with scripts/screenshots.mjs) -->
+    <section class="section section-see" id="see" aria-labelledby="see-title">
+      <div class="wrap">
+        <div class="section-head">
+          <p class="eyebrow">See it</p>
+          <h2 id="see-title">One popover, one settings window</h2>
+          <p class="section-lede">Click the keycap in your menu bar to switch packs or mute. Everything else is in Settings.</p>
+        </div>
+        <div class="shots" role="region" aria-label="Screenshots, scroll sideways for more" tabindex="0">
+          <figure class="shot">
+            <picture>
+              <source srcset="assets/screenshots/tray-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="assets/screenshots/tray-light.webp" width="560" height="733" loading="lazy" decoding="async" alt="The TakTak popover: an on switch, the volume, mute with its shortcut, and the list of sound packs with a play button each.">
+            </picture>
+            <figcaption>The menu-bar popover</figcaption>
+          </figure>
+          <figure class="shot">
+            <picture>
+              <source srcset="assets/screenshots/sounds-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="assets/screenshots/sounds-light.webp" width="1000" height="784" loading="lazy" decoding="async" alt="Settings, Sounds: the nine bundled packs as cards, each with its author, a short description and its license.">
+            </picture>
+            <figcaption>Settings → Sounds</figcaption>
+          </figure>
+          <figure class="shot">
+            <picture>
+              <source srcset="assets/screenshots/apps-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="assets/screenshots/apps-light.webp" width="1000" height="784" loading="lazy" decoding="async" alt="Settings, Apps: TakTak set to never play in Slack and zoom.us, and silent right now because Slack is in front.">
+            </picture>
+            <figcaption>Per-app rules (macOS)</figcaption>
+          </figure>
+          <figure class="shot">
+            <picture>
+              <source srcset="assets/screenshots/volume-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="assets/screenshots/volume-light.webp" width="1000" height="647" loading="lazy" decoding="async" alt="Settings, Volume: sliders for the master volume, the key press and the key release.">
+            </picture>
+            <figcaption>Press and release volume</figcaption>
+          </figure>
+          <figure class="shot">
+            <picture>
+              <source srcset="assets/screenshots/welcome-dark.webp" media="(prefers-color-scheme: dark)">
+              <img src="assets/screenshots/welcome-light.webp" width="720" height="707" loading="lazy" decoding="async" alt="The welcome window after Input Monitoring is allowed: You're all set, start typing. It also says Fully offline, never uses the internet.">
+            </picture>
+            <figcaption>The welcome window</figcaption>
+          </figure>
+        </div>
+        <p class="fine shots-hint">Screenshots from macOS. Light or dark follows your system.</p>
       </div>
     </section>
 

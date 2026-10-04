@@ -11,8 +11,9 @@ website/
 ├── main.js               CONFIG (repo URL, version), OS-detecting download button, sound demo
 ├── assets/
 │   ├── sounds/<pack>/    preview.mp3, keys.mp3 + keys.json, LICENSE.txt where the pack has one
-│   ├── og-image.svg      social preview source
-│   └── og-image.png      social preview (1200×630)
+│   ├── screenshots/      app screenshots, light and dark (WebP), for the "See it" strip
+│   ├── og.svg            social preview source (the README banner, at 1200×630)
+│   └── og.png            social preview (1200×630)
 ├── favicon.svg, favicon-32.png, apple-touch-icon.png
 ├── _headers              Cloudflare Pages headers (CSP, nosniff, no referrer, caching)
 ├── CNAME                 taktak.tech, for GitHub Pages
@@ -72,19 +73,19 @@ each pack's `LICENSE.txt` next to its sounds.
 Audio loads only when used: a preview on its first Play, a pack's keystrokes when the type box
 gets focus or another pack is picked.
 
-## Social preview image
+## Screenshots and the social preview image
 
-`assets/og-image.png` is rendered from `assets/og-image.svg` with headless Chrome:
+The screenshots in `assets/screenshots/` (and the PNGs the repository README uses, in
+`docs/assets/screenshots/`) are taken from the app's own UI running on the browser mock, and
+`assets/og.png` is rendered from `assets/og.svg`, all with headless Chrome. To retake them after
+the UI changes (needs Google Chrome, and `cwebp` for the WebP copies):
 
 ```sh
-cd website
-cat > /tmp/og.html <<EOF
-<!doctype html><style>html,body{margin:0}img{display:block}</style>
-<img src="file://$PWD/assets/og-image.svg" width="1200" height="630">
-EOF
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new --hide-scrollbars \
-  --allow-file-access-from-files --window-size=1200,630 --screenshot="$PWD/assets/og-image.png" file:///tmp/og.html
+npm run dev                      # in another terminal
+node scripts/screenshots.mjs     # --chrome <path> if Chrome is somewhere else
 ```
+
+The strip lazy-loads its images and picks the light or dark set with `prefers-color-scheme`.
 
 ## Deploy
 
@@ -127,7 +128,8 @@ root-relative paths). GitHub Pages ignores `_headers`; the `<meta>` CSP still ap
   this folder; the CSP will block anything else (keep the `<meta>` CSP and `_headers` in sync).
 - No inline scripts, inline styles or `style=""` attributes (the CSP blocks them).
 - Keep the promise word for word: "Fully offline — TakTak never uses the internet."
-- Keep the page light: everything a visitor can load, all audio included, is under 1 MB today.
+- Keep the page light: everything a visitor can load, all audio included, is under 1 MB today,
+  plus about 140 KB of screenshots (one theme's set) that load only when scrolled to.
 
 ## TODO
 
