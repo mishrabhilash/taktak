@@ -9,10 +9,12 @@ specified in [`ui-contract.md`](ui-contract.md); threads and real-time rules are
 ## Prerequisites
 
 - Rust 1.89 or newer (edition 2024, let-chains, `File::try_lock`): `export PATH="$HOME/.cargo/bin:$PATH"`.
-- Node 20 or newer with npm. Then run `npm install` once at the repository root. The Tauri CLI
+- Node 20.19+ or 22.12+ with npm (Vite 8 needs one of those; CI uses 22). Then run `npm ci`
+  once at the repository root (installs exactly what `package-lock.json` pins). The Tauri CLI
   is the `@tauri-apps/cli` dev dependency, so `npx tauri …` and `npm run tauri …` both work.
 - macOS: the Xcode command line tools. Windows: WebView2 and the MSVC build tools. Linux:
-  WebKitGTK 4.1 and the other Tauri 2 prerequisites.
+  WebKitGTK 4.1 and the other Tauri 2 prerequisites (the exact Debian/Ubuntu package list is in
+  [`CONTRIBUTING.md`](../CONTRIBUTING.md#linux-packages)).
 
 ## Develop
 
@@ -35,9 +37,14 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
 npm run check     # svelte-check, fails on warnings
-npm test          # vitest, then npm run test:scripts (node --test: scripts/signing.mjs helpers)
+npm test          # vitest, then npm run test:scripts (node --test: scripts/*.test.mjs)
 npm run build
 ```
+
+CI ([`.github/workflows/ci.yml`](../.github/workflows/ci.yml)) runs these on macOS, Windows
+and Linux, plus the self-test with `--allow-no-audio`, and once on Linux the offline guard
+(`npm run no-network`, after `cargo fetch --locked` and a `TAURI_ENV_PLATFORM=linux npm run
+build`) and `npm run notices -- --check`. See [`CONTRIBUTING.md`](../CONTRIBUTING.md#gates).
 
 ## Build
 
@@ -68,10 +75,24 @@ holds no mock code or mock data, and the app embeds it and serves it under the C
 Don't distribute a plain `cargo build --release`. It lacks the `tauri/custom-protocol`
 feature, so its windows try to load the dev server.
 
+**Published releases** come from CI, not from a laptop: pushing a tag `v<version>` (it must
+match `version` in `package.json` and the workspace `Cargo.toml`) runs
+[`.github/workflows/release.yml`](../.github/workflows/release.yml). It reruns the offline
+guard and the notices check, then builds with `tauri-apps/tauri-action`, which drives
+`node scripts/release.mjs build …` (the same path remapping and check as `npm run release`):
+macOS universal (`.dmg`, `.app.tar.gz`), Windows x64 (`.msi`, NSIS `-setup.exe`) and Linux x64
+(`.AppImage`, `.deb`, built on Ubuntu 22.04). Everything is uploaded to a **draft** GitHub
+Release with a `SHA256SUMS.txt`; publishing it is a manual step. Signing and notarization are
+TODO placeholders there, skipped while their secrets (`APPLE_CERTIFICATE`,
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_ID`, `APPLE_PASSWORD`,
+`APPLE_TEAM_ID`, `WINDOWS_CERTIFICATE`, `WINDOWS_CERTIFICATE_PASSWORD`) are absent: macOS
+builds are then signed ad hoc and Windows builds are unsigned.
+
 The macOS bundle contains:
 
 - `Contents/MacOS/taktak`.
 - `Contents/Resources/packs/<id>/…`: the 9 bundled packs, copied from `packs/` (`bundle.resources`).
+- `Contents/Resources/CREDITS.md`, `THIRD_PARTY_NOTICES.md` and `LICENSE` (`bundle.resources`).
 - `Contents/Resources/icon.icns`. The tray icons are compiled into the binary.
 - `Info.plist` with:
   - `CFBundleIdentifier` `tech.taktak.app`;
@@ -84,7 +105,8 @@ Signing: `signingIdentity` is `null`, so builds carry only the linker's ad-hoc s
 its code identity changes with every build. macOS ties Input Monitoring to that identity, so a
 rebuilt app has to be granted the permission again. For local builds, `npm run app` signs with
 a stable identity instead (next section). Distribution needs a Developer ID signature and
-notarization. `hardenedRuntime` is already on, and no entitlements are needed.
+notarization (the release workflow's Apple secrets, above). `hardenedRuntime` is already on,
+and no entitlements are needed.
 
 ### Development signing
 

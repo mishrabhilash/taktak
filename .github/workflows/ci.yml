@@ -1,0 +1,132 @@
+# Gates for every push and pull request: the same commands as CONTRIBUTING.md § Gates, on
+# macOS, Windows and Linux, plus the offline guard (TakTak never uses the internet) and the
+# third-party notices check.
+#
+# CI runners have no keyboard to listen to and usually no audio output device. No test needs
+# either: unit tests never open a device, and the app's self-test runs with --allow-no-audio,
+# which turns a missing output device into skipped playback checks instead of a failure.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  # Never start the keyboard listener (macOS would ask for Input Monitoring).
+  TAKTAK_NO_INPUT: 1
+
+jobs:
+  offline-guard:
+    name: Offline guard, notices, rustfmt
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: cargo fmt
+        run: cargo fmt --all -- --check
+
+      # Downloads the crates of every target (Windows and macOS ones too), so that cargo tree
+      # and cargo metadata can run offline below. Nothing is compiled in this job.
+      - name: Fetch crates for every target
+        run: cargo fetch --locked
+
+      # The UI exactly as `tauri build` builds it (TAURI_ENV_PLATFORM set: no browser mock).
+      - name: Build the shipped UI
+        run: npm run build
+        env:
+          TAURI_ENV_PLATFORM: linux
+
+      # Fails on networking crates in any desktop build (Cargo.lock has a short, explained
+      # allow-list for mobile-only crates), std::net or fetch/WebSocket in our sources,
+      # networking npm packages, a connect-src beyond Tauri's IPC, and http(s) URLs in the UI
+      # bundle other than XML namespaces and docs/license links. See scripts/no-network-lib.mjs.
+      - name: No network
+        run: npm run no-network
+
+      - name: THIRD_PARTY_NOTICES.md is current
+        run: npm run notices -- --check
+
+  gates:
+    name: Gates (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-22.04]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libasound2-dev \
+            libxdo-dev \
+            libxi-dev \
+            libx11-dev \
+            patchelf \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --locked
+
+      # Headless: no windows, no tray, no keyboard listener. Loads every bundled pack and drives
+      # the service; playback checks are skipped when the runner has no output device.
+      - name: App self-test
+        run: cargo run -p taktak --locked -- --selftest --allow-no-audio
+
+      - name: npm run check
+        run: npm run check
+
+      - name: npm test
+        run: npm test
+
+      - name: npm run build
+        run: npm run build

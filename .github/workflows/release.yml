@@ -1,0 +1,261 @@
+# Release builds for a version tag (v1.2.3, or v1.2.3-beta.1 for a pre-release), uploaded to a
+# DRAFT GitHub Release. Review the draft, then publish it by hand.
+#
+#   macOS    universal (Apple silicon + Intel): .dmg and .app.tar.gz
+#   Windows  x64: .msi and NSIS setup .exe
+#   Linux    x64: .AppImage and .deb (built on Ubuntu 22.04 for an older glibc baseline)
+#
+# Bundles are built with scripts/release.mjs (the `npm run release` wrapper around
+# `tauri build`), which strips the builder's file paths from the binary and checks that it did.
+#
+# Signing: every signing step below is a TODO placeholder that is SKIPPED while its secrets are
+# absent. Without them, macOS builds are ad-hoc signed (Gatekeeper asks users to allow the app
+# once) and Windows builds are unsigned (SmartScreen warns). See README § Install.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  verify:
+    name: Verify version, offline guard, notices
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Tag matches the version in package.json and Cargo.toml
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          npm_version="$(node -p "require('./package.json').version")"
+          cargo_version="$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -n 1)"
+          echo "tag $tag, package.json $npm_version, Cargo.toml $cargo_version"
+          if [ "$tag" != "$npm_version" ] || [ "$tag" != "$cargo_version" ]; then
+            echo "::error::Tag v$tag does not match package.json ($npm_version) and Cargo.toml [workspace.package] ($cargo_version)."
+            exit 1
+          fi
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Fetch crates for every target
+        run: cargo fetch --locked
+
+      - name: Build the shipped UI
+        run: npm run build
+        env:
+          TAURI_ENV_PLATFORM: linux
+
+      - name: No network
+        run: npm run no-network
+
+      - name: THIRD_PARTY_NOTICES.md is current
+        run: npm run notices -- --check
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS universal
+            os: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+            args: --target universal-apple-darwin --bundles app,dmg
+          - name: Windows x64
+            os: windows-latest
+            rust-targets: ''
+            args: --bundles msi,nsis
+          - name: Linux x64
+            os: ubuntu-22.04
+            rust-targets: ''
+            args: --bundles appimage,deb
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libasound2-dev \
+            libxdo-dev \
+            libxi-dev \
+            libx11-dev \
+            patchelf \
+            pkg-config
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      # TODO(signing, macOS): add these repository secrets to ship a Developer ID signed and
+      # notarized app. The Tauri CLI reads them from the environment:
+      #   APPLE_CERTIFICATE           base64 of the "Developer ID Application" certificate (.p12)
+      #   APPLE_CERTIFICATE_PASSWORD  the .p12 export password
+      #   APPLE_SIGNING_IDENTITY      "Developer ID Application: <Name> (<TEAMID>)"
+      #   APPLE_ID                    Apple ID e-mail used for notarization
+      #   APPLE_PASSWORD              an app-specific password for that Apple ID
+      #   APPLE_TEAM_ID               the 10-character team ID
+      # Only secrets that exist are exported: an empty APPLE_CERTIFICATE would make the Tauri
+      # CLI try (and fail) to import a certificate. Without a certificate the bundle is signed
+      # ad hoc ("-"), so it is at least consistently signed; Gatekeeper then asks the user to
+      # allow it once (System Settings > Privacy & Security > Open Anyway).
+      - name: Apple signing and notarization (TODO; skipped without secrets)
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          if [ -z "$APPLE_CERTIFICATE" ]; then
+            echo "::warning::APPLE_CERTIFICATE is not set: building an ad-hoc signed, un-notarized macOS app."
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID; do
+            value="${!name}"
+            [ -n "$value" ] || continue
+            delimiter="EOF_$(openssl rand -hex 16)"
+            { echo "$name<<$delimiter"; echo "$value"; echo "$delimiter"; } >> "$GITHUB_ENV"
+          done
+          if [ -z "$APPLE_ID" ] || [ -z "$APPLE_PASSWORD" ] || [ -z "$APPLE_TEAM_ID" ]; then
+            echo "::warning::APPLE_ID, APPLE_PASSWORD or APPLE_TEAM_ID is missing: the app is signed but not notarized."
+          fi
+
+      # TODO(signing, Windows): add WINDOWS_CERTIFICATE (base64 of a code signing .pfx) and
+      # WINDOWS_CERTIFICATE_PASSWORD. The certificate is imported into the runner's user store
+      # and its thumbprint handed to `tauri build` in a temporary config file. Certificates
+      # issued since June 2023 live on hardware tokens or in a cloud HSM and cannot be exported
+      # as a .pfx: for those (Azure Trusted Signing, SSL.com eSigner, …) replace this step with
+      # a bundle.windows.signCommand. Timestamping contacts the CA's server during the build
+      # only; the app itself never goes online.
+      - name: Windows code signing (TODO; skipped without secrets)
+        id: winsign
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_CERTIFICATE) {
+            Write-Output "::warning::WINDOWS_CERTIFICATE is not set: building unsigned Windows installers."
+            exit 0
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'taktak-signing.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE))
+          $password = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $cert = Import-PfxCertificate -FilePath $pfx -CertStoreLocation Cert:\CurrentUser\My -Password $password
+          Remove-Item $pfx
+          $config = @{ bundle = @{ windows = @{
+            certificateThumbprint = $cert.Thumbprint
+            digestAlgorithm = 'sha256'
+            timestampUrl = 'http://timestamp.digicert.com'
+          } } } | ConvertTo-Json -Depth 5 -Compress
+          $file = Join-Path $env:RUNNER_TEMP 'tauri.signing.conf.json'
+          Set-Content -Path $file -Value $config -Encoding utf8NoBOM
+          "args=--config $file" >> $env:GITHUB_OUTPUT
+
+      - name: Build and upload to the draft release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: node scripts/release.mjs
+          args: ${{ matrix.args }} ${{ steps.winsign.outputs.args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: TakTak ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          includeUpdaterJson: false
+          releaseBody: |
+            **TakTak is a fully offline app.** It never connects to the internet: no accounts, no
+            telemetry, no update checks. Keystrokes are never stored, logged or sent anywhere.
+
+            | OS | Download |
+            |---|---|
+            | macOS 11+ (Apple silicon and Intel) | `.dmg` (or `.app.tar.gz`) |
+            | Windows 10/11 x64 | `.msi` or `-setup.exe` |
+            | Linux x64 | `.AppImage` or `.deb` |
+
+            First launch, permissions and checksums: see the README. Verify a download with
+            `SHA256SUMS.txt` (`shasum -a 256 -c SHA256SUMS.txt --ignore-missing`).
+
+      # tauri-action uploads the .dmg; make sure the zipped .app is there too, once.
+      - name: Upload the .app as .app.tar.gz
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          if gh release view "$tag" --json assets --jq '.assets[].name' | grep -q '\.app\.tar\.gz$'; then
+            echo "An .app.tar.gz is already attached."
+            exit 0
+          fi
+          bundle_dir="target/universal-apple-darwin/release/bundle/macos"
+          archive="TakTak_${tag#v}_universal.app.tar.gz"
+          tar -C "$bundle_dir" -czf "$archive" TakTak.app
+          gh release upload "$tag" "$archive" --clobber
+
+  checksums:
+    name: SHA256SUMS.txt
+    needs: build
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checksum every asset of the draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          mkdir assets
+          gh release download "$GITHUB_REF_NAME" --dir assets --skip-existing
+          cd assets
+          rm -f SHA256SUMS.txt
+          sha256sum -- * | tee SHA256SUMS.txt
+          gh release upload "$GITHUB_REF_NAME" SHA256SUMS.txt --clobber
