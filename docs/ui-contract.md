@@ -278,8 +278,9 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
   listener that fails to start although permission is granted (macOS sometimes refuses the tap
   right after the user grants it) also shows `"denied"`, and is retried every 30 s; **(M4)**
   `onboarding.relaunchSuggested` is true meanwhile.
-  `"unknown"` means the platform has no key listener (Windows and Linux for now), or the app runs
-  with `TAKTAK_NO_INPUT=1`. **(M4)** The onboarding window is the full guide (see "Onboarding").
+  `"unknown"` means the platform has no key listener, or the app runs with `TAKTAK_NO_INPUT=1`.
+  Windows and Linux have one since Milestone 5 (`"granted"`; `"denied"` on Linux Wayland while
+  the input devices are not readable, see `platform-notes.md`). **(M4)** The onboarding window is the full guide (see "Onboarding").
 - Mute hotkey: a saved `muteHotkey` that cannot be registered at startup stays in the settings
   but sets `muteHotkeyError` (see `AppState`).
 - Privacy: no network access (CSP `default-src 'self'`; no remote URLs), no logging of keys,
@@ -302,7 +303,8 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 - **Why it is silent**, first match wins (the UI status line and the tray status item use this
   order; texts in "UI requirements"): sounds off → muted by hand → `screenLocked` →
   `outputChanged` → no key listener and no permission step (`permission !== "granted" &&
-  !onboarding.permissionRequired`: Windows and Linux for now; status `Key sounds unavailable`,
+  !onboarding.permissionRequired`: `TAKTAK_NO_INPUT=1`, and Linux Wayland without access to
+  the input devices until it gets its own permission step; status `Key sounds unavailable`,
   an info notice without buttons) → permission missing → audio fault → `ruleBlocked` → audio
   starting.
 

@@ -35,13 +35,16 @@
 ```
 
 - **Input thread** (`taktak-input`): owns the OS hook (macOS: listen-only `CGEventTap` on a
-  dedicated CFRunLoop). Per event it maps the native code to a `Key`, drops auto-repeat via
+  dedicated CFRunLoop; Windows: `WH_KEYBOARD_LL` hook in a `GetMessageW` loop; Linux: XInput2
+  raw events on X11 or `/dev/input` evdev devices on Wayland, in a `poll(2)` loop; see
+  [`platform-notes.md`](platform-notes.md)). Per event it maps the native code to a `Key`, drops auto-repeat via
   `PressState`, checks a single `AtomicBool` "sounds allowed right now" (maintained off this
   path, see "The gate, per-app rules and auto-mute" below) and pushes a `Trigger` (key,
   down/up, event and receive timestamps) into a lock-free ring. It does not choose or humanize sounds. No allocation, no
   locks, no logging: when macOS disables the tap (timeout or user input), the callback
   re-enables it, clears the held keys and bumps a counter that the control side reads with
-  `Listener::take_reenabled` and logs.
+  `Listener::take_reenabled` and logs (Linux evdev counts kernel `SYN_DROPPED` overruns the
+  same way; Windows removes a slow hook without any signal, so it reports 0).
 - **Audio callback** (owned by CoreAudio / WASAPI / ALSA via cpal). At the start of every
   buffer it:
   1. loads the settings: the master, press and release gains and the humanize amount from
@@ -154,7 +157,10 @@
    (buffer + device latency + safety offset on CoreAudio).
 
 Latency = input + queue + output; each stage is measured separately (`latency.rs`) using one
-monotonic clock (mach host time on macOS, which CGEvent and CoreAudio timestamps share).
+monotonic clock (mach host time on macOS, which CGEvent and CoreAudio timestamps share;
+`Instant` elsewhere). On Linux the OS event time is converted from `CLOCK_MONOTONIC` (evdev:
+µs; X11 server time: ms) by its age at receipt. On Windows the hook's timestamp has ~15.6 ms
+resolution, so `event_ns` is the receive time and the input stage reads 0.
 Measurements record timings only.
 
 ## Sound packs
@@ -210,7 +216,10 @@ new one is swapped in.
 ## Privacy by construction
 
 - Hooks read key codes and down/up only. No layout/character APIs are called
-  (on macOS: no `CGEventKeyboardGetUnicodeString`, no TIS calls).
+  (on macOS: no `CGEventKeyboardGetUnicodeString`, no TIS calls; on Windows: scan codes only,
+  never `vkCode`, `ToUnicode`/`ToUnicodeEx`; on Linux: key codes only, no keysyms or XKB).
+  The hooks are listen-only: the Windows hook always calls `CallNextHookEx`, evdev devices
+  are never grabbed.
 - `Key`'s `Debug` prints `Key(<redacted>)`, so key identities cannot leak into logs by accident.
 - No networking code or networking crates.
 - Per-app rules (Milestone 4) see only the frontmost app's bundle id and name, keep only the
@@ -243,9 +252,9 @@ hook thread being scheduled). The hook thread therefore runs at `QOS_CLASS_USER_
 | | Latency | Global input | Per-app rules |
 |---|---|---|---|
 | macOS | < 10 ms on built-in speakers. Bluetooth output adds 100–250 ms (no fix possible). | Needs Input Monitoring. Secure Input (password fields, Terminal "Secure Keyboard Entry", lock screen) hides keystrokes, so it stays silent there by design. Unsigned dev builds lose the permission on every rebuild (code identity changes); `npm run app` with a "TakTak Development" certificate keeps it. | `NSWorkspace` frontmost app bundle ID, no extra permission. Spotlight/Raycast/Alfred panels report the *previous* app as frontmost. |
-| Windows | cpal uses WASAPI shared mode at the default period (~10 ms) + mixer, typically 15–30 ms total. Hitting < 10 ms needs `IAudioClient3` low-latency shared mode (driver-dependent) or exclusive mode (blocks other apps' audio). Planned as a custom backend. | `WH_KEYBOARD_LL`, no admin. Cannot see keys typed into elevated (admin) windows unless TakTak is elevated (UIPI). Hook must return in < ~300 ms or Windows silently removes it. | `GetForegroundWindow` → process image path. Works, though a few protected processes refuse the query. |
-| Linux X11 | PipeWire runs the graph at the smallest `node.latency` any client asks for (1024 frames, ~21 ms, only when nobody asks for less), so our small fixed buffer lowers the quantum for every app while the stream is open; plan to request 128/48000 there (see platform-notes.md). | XInput2 raw events: listen-only, no root. | `_NET_ACTIVE_WINDOW` → `WM_CLASS`. |
-| Linux Wayland | as above | No global key API by design. Only `/dev/input` via evdev, which needs the `input` group (equivalent to keylogger rights). Opt-in and documented. | No generic API. Compositor-specific only (Sway/Hyprland IPC, GNOME needs an extension). Rules are unavailable otherwise. |
+| Windows | cpal uses WASAPI shared mode at the default period (~10 ms) + mixer, typically 15–30 ms total. Hitting < 10 ms needs `IAudioClient3` low-latency shared mode (driver-dependent) or exclusive mode (blocks other apps' audio). Planned as a custom backend. | `WH_KEYBOARD_LL` (implemented, Milestone 5), no admin, no prompt. Cannot see keys typed into elevated (admin) windows unless TakTak is elevated (UIPI), nor the secure desktop. Injected keys (on-screen keyboards, automation tools) are ignored. Hook must return in < ~300 ms or Windows silently removes it (undetectable). Not yet run on real Windows. | `GetForegroundWindow` → process image path. Works, though a few protected processes refuse the query. |
+| Linux X11 | PipeWire runs the graph at the smallest `node.latency` any client asks for (1024 frames, ~21 ms, only when nobody asks for less), so our small fixed buffer lowers the quantum for every app while the stream is open; plan to request 128/48000 there (see platform-notes.md). | XInput2 raw events (implemented, Milestone 5): listen-only, no root; falls back to evdev without a usable X server. Not yet run on real Linux. | `_NET_ACTIVE_WINDOW` → `WM_CLASS`. |
+| Linux Wayland | as above | No global key API by design. Only `/dev/input` via evdev (implemented, Milestone 5; hotplug via inotify), which needs the `input` group (equivalent to keylogger rights): `InputError::PermissionDenied` until the user opts in. `TAKTAK_INPUT=x11` settles for XWayland (keys in X11 apps only). The app does not explain the opt-in yet. | No generic API. Compositor-specific only (Sway/Hyprland IPC, GNOME needs an extension). Rules are unavailable otherwise. |
 
 Always-on stream: keeping the output stream open is what makes ~5 ms possible. Cold-starting
 it on a keypress costs 30+ ms (seen as the first-trigger outlier during testing). The open

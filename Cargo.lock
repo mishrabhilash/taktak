@@ -4004,6 +4004,7 @@ dependencies = [
  "dirs 7.0.0",
  "fastrand",
  "hound",
+ "libc",
  "log",
  "notify",
  "rtrb",
@@ -4012,6 +4013,8 @@ dependencies = [
  "serde_json",
  "symphonia",
  "tempfile",
+ "windows-sys 0.61.2",
+ "x11rb",
  "zip",
 ]
 
