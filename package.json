@@ -1,6 +1,6 @@
 {
   "name": "taktak",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "TakTak settings and tray UI (Svelte 5 + TypeScript), rendered by the Tauri app in src-tauri.",
   "license": "MIT",
