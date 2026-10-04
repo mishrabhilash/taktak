@@ -49,7 +49,7 @@ export const ALLOWED_URLS = [
   [/^http:\/\/www\.w3\.org\//, 'XML namespace names (SVG, XHTML), never fetched'],
   [/^https:\/\/svelte\.dev\/e\//, "links in Svelte's runtime error messages"],
   [/^https:\/\/taktak\.tech(\/|$)/, 'the project website (docs link)'],
-  [/^https:\/\/github\.com\/<?your-org>?\/taktak(\/|$)/, 'the project repository (docs link)'],
+  [/^https:\/\/github\.com\/<?mishrabhilash>?\/taktak(\/|$)/, 'the project repository (docs link)'],
   [/^https:\/\/creativecommons\.org\/(licenses|publicdomain)\//, 'license links'],
   [/^https:\/\/(opensource\.org|spdx\.org)\/licenses\//, 'license links'],
 ];

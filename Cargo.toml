@@ -6,7 +6,7 @@ members = ["src-tauri", "src-tauri/core", "tools/synth-packs", "tools/pack-maker
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
-repository = "https://github.com/your-org/taktak"
+repository = "https://github.com/mishrabhilash/taktak"
 
 [profile.release]
 lto = "thin"

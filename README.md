@@ -57,7 +57,7 @@ Monitoring**. You can revoke it at any time; TakTak just goes quiet.
 
 ## Install
 
-Download the latest version from **[GitHub Releases](https://github.com/<your-org>/taktak/releases/latest)**.
+Download the latest version from **[GitHub Releases](https://github.com/mishrabhilash/taktak/releases/latest)**.
 Each release lists `SHA256SUMS.txt` to verify your download.
 
 | OS | File | Notes |
@@ -173,7 +173,7 @@ command line tools on macOS; WebView2 and the MSVC build tools on Windows; WebKi
 friends on Linux, the exact list is in [CONTRIBUTING.md](CONTRIBUTING.md#linux-packages)).
 
 ```sh
-git clone https://github.com/<your-org>/taktak.git
+git clone https://github.com/mishrabhilash/taktak.git
 cd taktak
 npm ci                    # the UI's dependencies, pinned by package-lock.json
 npm run tauri dev         # run the app in development, with hot reload for the UI
