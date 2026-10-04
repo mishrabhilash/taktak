@@ -123,8 +123,16 @@ export interface OnboardingStatus {
   offer: boolean;
   /** The platform needs a permission the user grants (macOS with the key listener on). */
   permissionRequired: boolean;
-  /** macOS reports access as granted but the key listener cannot start: suggest Quit & Reopen. */
+  /**
+   * The permission looks granted (macOS: Input Monitoring; Windows and Linux X11 have none to
+   * grant) but the key listener cannot start: suggest Quit & Reopen.
+   */
   relaunchSuggested: boolean;
+  /**
+   * (M5) Linux: the key listener must read the keyboard devices (Wayland, or TAKTAK_INPUT=evdev)
+   * and cannot, because the user is not in the `input` group. Explain the opt-in and its cost.
+   */
+  inputGroupNeeded: boolean;
 }
 
 export interface AppState {
@@ -178,6 +186,42 @@ export interface LatencyReport {
   outputMs: number;
 }
 
+/**
+ * (M5) Which picker `import_mechvibes_pack` opens. macOS shows one panel for a folder or a .zip
+ * whatever the kind; Windows and Linux pickers take one or the other ("any" = the .zip picker).
+ */
+export type PickKind = 'any' | 'folder' | 'zip';
+
+/** (M5) What a Mechvibes import wrote. Every string is pack content, already escaped. */
+export interface ImportSummary {
+  /** The new pack's id ("mv-…"); it shows up in `AppState.packs` within about a second. */
+  id: string;
+  name: string;
+  /** The source folder or .zip file name. */
+  source: string;
+  /** The Mechvibes flavour, e.g. "Mechvibes v2". */
+  format: string;
+  /** Keys with a sound of their own. */
+  keysMapped: number;
+  /** How many of them also have their own release sound. */
+  keysWithRelease: number;
+  /** Sound files written (the preview not counted). */
+  soundsWritten: number;
+  /** An earlier import of the same pack was replaced. */
+  replaced: boolean;
+  /** Skipped keys, missing or unreadable files, other notes; at most 30 lines. */
+  warnings: string[];
+}
+
+/**
+ * (M5) The result of `import_mechvibes_pack` / `overwrite_mechvibes_pack`. "alreadyImported":
+ * this pack (same id, same source name) was imported before and nothing changed; offer to
+ * replace it with `overwrite_mechvibes_pack`.
+ */
+export type MechvibesImport =
+  | { outcome: 'imported'; pack: ImportSummary }
+  | { outcome: 'alreadyImported'; id: string; source: string };
+
 /** Window labels; the UI picks its view from the label of the window it runs in. */
 export type WindowLabel = 'tray' | 'settings' | 'onboarding';
 
@@ -213,6 +257,9 @@ export interface Commands {
   open_onboarding: { args: void; result: void };
   finish_onboarding: { args: void; result: AppState };
   relaunch: { args: void; result: void };
+  // Milestone 5
+  import_mechvibes_pack: { args: { kind: PickKind }; result: MechvibesImport | null };
+  overwrite_mechvibes_pack: { args: void; result: MechvibesImport };
 }
 
 export type Command = keyof Commands;

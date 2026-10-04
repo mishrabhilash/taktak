@@ -172,9 +172,12 @@ pub struct OnboardingStatus {
     pub offer: bool,
     /// The platform needs a permission the user grants (macOS with the key listener on).
     pub permission_required: bool,
-    /// macOS reports Input Monitoring as granted but the key listener cannot start: a relaunch
-    /// usually fixes it.
+    /// The platform reports the permission as granted but the key listener cannot start: a
+    /// relaunch usually fixes it (macOS: Input Monitoring; elsewhere the listener failed).
     pub relaunch_suggested: bool,
+    /// Linux (M5): the key listener has to read the keyboard devices directly (Wayland, or
+    /// `TAKTAK_INPUT=evdev`) and cannot, because the user is not in the `input` group.
+    pub input_group_needed: bool,
 }
 
 /// Where a pack was found.
@@ -341,6 +344,53 @@ pub struct LatencyReport {
     pub output_ms: f64,
 }
 
+/// Which picker `import_mechvibes_pack` opens (M5). macOS shows one panel that takes a folder
+/// or a `.zip` whatever the kind; the Windows and Linux pickers choose one or the other, `Any`
+/// being the `.zip` picker there.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PickKind {
+    #[default]
+    Any,
+    Folder,
+    Zip,
+}
+
+/// What an import wrote (M5). Every string is pack content, already escaped for display.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportSummary {
+    /// The new pack's id (`mv-<name>`), as it will appear in `AppState::packs`.
+    pub id: String,
+    pub name: String,
+    /// The source folder or `.zip` file name.
+    pub source: String,
+    /// The Mechvibes flavour, e.g. "Mechvibes v2".
+    pub format: String,
+    /// Keys with a sound of their own.
+    pub keys_mapped: usize,
+    /// How many of them also have a release sound of their own.
+    pub keys_with_release: usize,
+    /// Sound files written (the preview not counted).
+    pub sounds_written: usize,
+    /// An earlier import of the same pack was replaced.
+    pub replaced: bool,
+    /// Skipped keys, missing or unreadable files and other notes, at most
+    /// [`crate::mechvibes::MAX_WARNINGS`] lines.
+    pub warnings: Vec<String>,
+}
+
+/// The result of `import_mechvibes_pack` and `overwrite_mechvibes_pack` (M5).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+#[serde(tag = "outcome", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum MechvibesImport {
+    /// Written to the user packs folder; the registry lists it within about a second.
+    Imported { pack: ImportSummary },
+    /// This pack (same id, same source name) was imported before; nothing was changed.
+    /// `overwrite_mechvibes_pack` replaces it.
+    AlreadyImported { id: String, source: String },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -502,7 +552,12 @@ mod tests {
         assert_eq!(json["rulesSupported"], false);
         assert_eq!(
             json["onboarding"],
-            serde_json::json!({ "offer": true, "permissionRequired": false, "relaunchSuggested": false })
+            serde_json::json!({
+                "offer": true,
+                "permissionRequired": false,
+                "relaunchSuggested": false,
+                "inputGroupNeeded": false,
+            })
         );
         assert_eq!(json["permission"], "unknown");
         assert_eq!(json["playingPackId"], serde_json::Value::Null);
@@ -522,8 +577,12 @@ mod tests {
         state.frontmost_app = Some(AppRef { id: "com.apple.Safari".into(), name: "Safari".into() });
         state.rule_blocked = true;
         state.rules_supported = true;
-        state.onboarding =
-            OnboardingStatus { offer: true, permission_required: true, relaunch_suggested: true };
+        state.onboarding = OnboardingStatus {
+            offer: true,
+            permission_required: true,
+            relaunch_suggested: true,
+            input_group_needed: true,
+        };
         for (auto_mute, name) in
             [(AutoMute::ScreenLocked, "screenLocked"), (AutoMute::OutputChanged, "outputChanged")]
         {
@@ -538,7 +597,12 @@ mod tests {
             assert_eq!(json["rulesSupported"], true);
             assert_eq!(
                 json["onboarding"],
-                serde_json::json!({ "offer": true, "permissionRequired": true, "relaunchSuggested": true })
+                serde_json::json!({
+                    "offer": true,
+                    "permissionRequired": true,
+                    "relaunchSuggested": true,
+                    "inputGroupNeeded": true,
+                })
             );
         }
         let info = AppInfo {
@@ -556,6 +620,51 @@ mod tests {
         );
         let no_icon = AppInfo { icon_data_url: None, ..info };
         assert_eq!(serde_json::to_value(&no_icon).unwrap()["iconDataUrl"], serde_json::Value::Null);
+    }
+
+    #[test]
+    fn mechvibes_imports_use_contract_names() {
+        let pack = ImportSummary {
+            id: "mv-cream".into(),
+            name: "Cream".into(),
+            source: "cream.zip".into(),
+            format: "Mechvibes v2".into(),
+            keys_mapped: 80,
+            keys_with_release: 12,
+            sounds_written: 92,
+            replaced: false,
+            warnings: vec!["Skipped key \"999\": unknown key code".into()],
+        };
+        assert_eq!(
+            serde_json::to_value(MechvibesImport::Imported { pack }).unwrap(),
+            serde_json::json!({
+                "outcome": "imported",
+                "pack": {
+                    "id": "mv-cream",
+                    "name": "Cream",
+                    "source": "cream.zip",
+                    "format": "Mechvibes v2",
+                    "keysMapped": 80,
+                    "keysWithRelease": 12,
+                    "soundsWritten": 92,
+                    "replaced": false,
+                    "warnings": ["Skipped key \"999\": unknown key code"],
+                },
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(MechvibesImport::AlreadyImported {
+                id: "mv-cream".into(),
+                source: "cream.zip".into(),
+            })
+            .unwrap(),
+            serde_json::json!({ "outcome": "alreadyImported", "id": "mv-cream", "source": "cream.zip" })
+        );
+        for (kind, name) in
+            [(PickKind::Any, "any"), (PickKind::Folder, "folder"), (PickKind::Zip, "zip")]
+        {
+            assert_eq!(serde_json::from_value::<PickKind>(name.into()).unwrap(), kind);
+        }
     }
 
     #[test]

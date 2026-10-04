@@ -9,6 +9,7 @@
 //! - [`apps`]: the macOS observers (frontmost app, screen lock, session), running apps, icons
 //!   and the app picker; stubs elsewhere.
 //! - [`commands`], [`tray`], [`windows`], [`hotkey`]: thin Tauri glue.
+//! - [`mechvibes`]: "Import Mechvibes pack…": the picker and the import on a worker thread.
 //! - `instance` (macOS): one TakTak per user; a second launch hands over and exits.
 //!   [`relaunch`]: quitting and starting again without handing over.
 //! - [`selftest`]: `taktak --selftest`, a headless check for CI.
@@ -23,6 +24,7 @@ pub mod input;
 pub mod instance;
 pub mod loader;
 pub mod logging;
+pub mod mechvibes;
 pub mod relaunch;
 pub mod rules;
 pub mod selftest;
@@ -101,10 +103,14 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
         tray::spawn_window_task(app, windows::show_settings);
     }));
-    let app = builder
+    let builder = builder
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(hotkey::on_event).build())
         .plugin(tauri_plugin_autostart::Builder::new().build())
-        .plugin(tauri_plugin_positioner::init())
+        .plugin(tauri_plugin_positioner::init());
+    // The Mechvibes import's folder / .zip picker, from Rust only (macOS has its own panel).
+    #[cfg(not(target_os = "macos"))]
+    let builder = builder.plugin(tauri_plugin_dialog::init());
+    let app = builder
         .setup(move |app| {
             #[cfg(target_os = "macos")]
             {
@@ -164,6 +170,8 @@ pub fn run() {
             commands::open_onboarding,
             commands::finish_onboarding,
             commands::relaunch,
+            commands::import_mechvibes_pack,
+            commands::overwrite_mechvibes_pack,
         ])
         .build(context);
 

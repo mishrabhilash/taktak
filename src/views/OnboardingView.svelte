@@ -1,7 +1,9 @@
 <script lang="ts">
-  // The "Welcome to TakTak" window: what TakTak is and where it lives, then (macOS) the Input
-  // Monitoring step with its privacy promise, a live status that turns into success without a
-  // restart, "Quit & Reopen" when macOS wants a relaunch, and troubleshooting for a stale entry.
+  // The "Welcome to TakTak" window: what TakTak is and where it lives, that it is fully offline,
+  // then (macOS) the Input Monitoring step with its privacy promise, a live status that turns
+  // into success without a restart, "Quit & Reopen" when macOS wants a relaunch, and
+  // troubleshooting for a stale entry; (Linux, M5) the `input` group opt-in and its cost;
+  // (Windows, Linux) "Quit & Reopen" when the key listener failed to start.
   // The steps are decided in onboarding.ts; nothing here reads what the user types.
   import Icon from '../components/Icon.svelte';
   import Keycaps from '../components/Keycaps.svelte';
@@ -17,7 +19,15 @@
     onboardingStep,
     troubleshootDelay,
   } from '../lib/onboarding';
+  import { OFFLINE } from '../lib/offline';
   import { platform } from '../lib/platform';
+  import {
+    INPUT_GROUP_COMMAND,
+    INPUT_GROUP_COST,
+    INPUT_GROUP_WHY,
+    RELAUNCH_OTHER,
+    UNAVAILABLE,
+  } from '../lib/status';
   import { app, apply, run, showError } from '../lib/store.svelte';
 
   const s = $derived(app.state);
@@ -33,6 +43,7 @@
           permission: s.permission,
           permissionRequired: s.onboarding.permissionRequired,
           relaunchSuggested: s.onboarding.relaunchSuggested,
+          inputGroupNeeded: s.onboarding.inputGroupNeeded,
           openedAt,
           now,
         }
@@ -66,7 +77,8 @@
 
   let relaunching = $state(false);
   let closing = $state(false);
-  let copied = $state(false);
+  /** The command whose Copy button was pressed last, for 2 s. */
+  let copied = $state<string | null>(null);
   let copiedTimer: ReturnType<typeof setTimeout> | undefined;
 
   // A relaunch that did not happen (or the mock, which stays) frees the button again.
@@ -108,11 +120,11 @@
     }
   }
 
-  async function copyCommand(): Promise<void> {
-    if (await copyText(TCC_RESET_COMMAND)) {
+  async function copyCommand(command: string): Promise<void> {
+    if (await copyText(command)) {
       clearTimeout(copiedTimer);
-      copied = true;
-      copiedTimer = setTimeout(() => (copied = false), 2000);
+      copied = command;
+      copiedTimer = setTimeout(() => (copied = null), 2000);
     } else {
       showError('Couldn’t copy the command. Select it and copy it instead.');
     }
@@ -141,6 +153,8 @@
       </p>
     </header>
 
+    <p class="offline"><Icon name="shield" size={16} /><strong>{OFFLINE}</strong></p>
+
     {#if s && step}
       {#if step.phase === 'welcome'}
         <section class="card" aria-labelledby="ready-title">
@@ -162,22 +176,52 @@
           <div class="status">
             <span class="status-icon info"><Icon name="info" size={18} /></span>
             <div>
-              {#if platform === 'mac'}
-                <h2 class="status-title" id="unavailable-title">Key sounds are turned off</h2>
-                <p class="status-hint">
-                  TakTak was started without its key listener, so typing makes no sound.
-                </p>
-              {:else}
-                <h2 class="status-title" id="unavailable-title">
-                  Key sounds aren’t available on this system yet
-                </h2>
-                <p class="status-hint">
-                  TakTak can’t hear key presses on {platform === 'windows' ? 'Windows' : 'Linux'}
-                  yet, so typing makes no sound. You can still try the sound packs in Settings.
-                </p>
-              {/if}
+              <h2 class="status-title" id="unavailable-title">Key sounds are turned off</h2>
+              <p class="status-hint">{UNAVAILABLE}</p>
             </div>
           </div>
+        </section>
+      {:else if step.phase === 'inputGroup'}
+        <section class="card" aria-labelledby="group-title">
+          <h2 class="card-title" id="group-title">Allow keyboard access</h2>
+          <p class="why">{INPUT_GROUP_WHY}</p>
+          <div class="command group-command">
+            <code class="mono selectable">{INPUT_GROUP_COMMAND}</code>
+            <button
+              type="button"
+              class="btn small"
+              aria-label={copied === INPUT_GROUP_COMMAND ? 'Copied' : 'Copy the command'}
+              onclick={() => copyCommand(INPUT_GROUP_COMMAND)}
+            >
+              <Icon name={copied === INPUT_GROUP_COMMAND ? 'check' : 'copy'} size={12} />
+              {copied === INPUT_GROUP_COMMAND ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+          <p class="step-hint group-hint">
+            Run it in a terminal. Once you have logged back in, TakTak hears your keys the next
+            time it starts.
+          </p>
+          <div class="caution">
+            <span class="caution-icon"><Icon name="warning" size={16} /></span>
+            <p>{INPUT_GROUP_COST}</p>
+          </div>
+          <p class="step-hint group-hint">
+            Prefer not to? Key sounds stay off, and everything else works. On an X11 session TakTak
+            needs no extra access.
+          </p>
+        </section>
+      {:else if step.phase === 'relaunch' && !s.onboarding.permissionRequired}
+        <section class="card" aria-labelledby="restart-title">
+          <div class="status relaunch" role="status">
+            <span class="status-icon"><Icon name="restart" size={18} /></span>
+            <div>
+              <h2 class="status-title" id="restart-title">TakTak needs to restart</h2>
+              <p class="status-hint">{RELAUNCH_OTHER}</p>
+            </div>
+          </div>
+          <button type="button" class="btn primary wide" disabled={relaunching} onclick={reopen}>
+            <Icon name="restart" size={14} />{relaunching ? 'Reopening…' : 'Quit & Reopen'}
+          </button>
         </section>
       {:else}
         <section class="card" aria-labelledby="perm-title">
@@ -190,7 +234,7 @@
             <span class="promise-icon"><Icon name="shield" size={18} /></span>
             <p>
               TakTak only notices that a key went down or up — never what you type. Nothing is
-              recorded, stored or sent anywhere; TakTak has no network access.
+              recorded, stored or sent anywhere, and TakTak never uses the internet.
             </p>
           </div>
 
@@ -296,10 +340,11 @@
                 <button
                   type="button"
                   class="btn small"
-                  aria-label={copied ? 'Copied' : 'Copy the command'}
-                  onclick={copyCommand}
+                  aria-label={copied === TCC_RESET_COMMAND ? 'Copied' : 'Copy the command'}
+                  onclick={() => copyCommand(TCC_RESET_COMMAND)}
                 >
-                  <Icon name={copied ? 'check' : 'copy'} size={12} />{copied ? 'Copied' : 'Copy'}
+                  <Icon name={copied === TCC_RESET_COMMAND ? 'check' : 'copy'} size={12} />
+                  {copied === TCC_RESET_COMMAND ? 'Copied' : 'Copy'}
                 </button>
               </div>
               {#if step.phase !== 'relaunch'}
@@ -322,7 +367,7 @@
   </main>
 
   <footer class="footer">
-    {#if step && !step.closePrimary}
+    {#if step && !step.closePrimary && s?.onboarding.permissionRequired}
       <p class="footer-hint">TakTak reminds you the next time it starts.</p>
     {/if}
     <button
@@ -392,6 +437,51 @@
   .inline-logo {
     display: inline-block;
     vertical-align: -2px;
+  }
+
+  .offline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 14px;
+    padding: 8px 12px;
+    border-radius: var(--radius-m);
+    background: var(--accent-soft);
+    color: var(--accent-text);
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .offline strong {
+    font-weight: 650;
+  }
+
+  .group-command {
+    margin-top: 12px;
+  }
+
+  .group-hint {
+    margin-top: 6px;
+  }
+
+  .caution {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius-m);
+    background: var(--warning-bg);
+    color: var(--warning-text);
+  }
+
+  .caution-icon {
+    padding-top: 1px;
+  }
+
+  .caution p {
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .card {

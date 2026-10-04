@@ -5,6 +5,7 @@
 use crate::state::{DEFAULT_PACK_ID, InvalidPack, PackSummary, RETIRED_PACK_IDS};
 use std::fs;
 use std::path::{Path, PathBuf};
+use taktak_core::pack::manifest::PERSONAL_LICENSE;
 use taktak_core::pack::registry::PackEntry;
 use taktak_core::pack::{self, Manifest, PackError, PackInfo, Problem, RegistryEvent, Severity};
 
@@ -52,6 +53,12 @@ pub fn problem_line(problem: &Problem) -> String {
     format!("{severity}: {}", describe(problem))
 }
 
+/// The loader's warning that a pack is `LicenseRef-Personal` (Mechvibes imports): the UI shows
+/// such packs with a "Personal" badge that says the same, so it is not listed as a warning.
+fn personal_note(info: &PackInfo, problem: &Problem) -> bool {
+    info.license == PERSONAL_LICENSE && problem.location == "license" && !problem.is_error()
+}
+
 /// The UI's pack list (in `packs`' order, which the registry sorts by name) and invalid-pack
 /// list, from the registry's usable packs and all its candidates.
 pub fn summarize(
@@ -66,7 +73,9 @@ pub fn summarize(
                 .iter()
                 .find(|e| e.location == info.location)
                 .and_then(|e| e.status.as_ref().ok())
-                .map(|(_, warnings)| warnings.iter().map(describe).collect())
+                .map(|(_, warnings)| {
+                    warnings.iter().filter(|w| !personal_note(info, w)).map(describe).collect()
+                })
                 .unwrap_or_default();
             let Features { has_release, per_key } = features(&info.location);
             PackSummary {
@@ -472,6 +481,21 @@ mod tests {
         assert_eq!(summaries[1].origin, PackOrigin::User);
         assert!(!summaries[1].has_release);
         assert_eq!(summaries[1].warnings, ["license: personal\\u{1b}[2J"]);
+        // The same note on a pack that is LicenseRef-Personal is left to the "Personal" badge.
+        let personal = PackInfo { license: PERSONAL_LICENSE.into(), ..user.clone() };
+        let entries = vec![PackEntry {
+            location: personal.location.clone(),
+            origin: CoreOrigin::User,
+            status: Ok((
+                personal.clone(),
+                vec![
+                    Problem::warning("license", "LicenseRef-Personal: personal use only"),
+                    Problem::warning("sounds/a.wav", "long"),
+                ],
+            )),
+        }];
+        let (summaries, _) = summarize(&[personal], &entries, features);
+        assert_eq!(summaries[0].warnings, ["sounds/a.wav: long"]);
         assert_eq!(invalid.len(), 1);
         assert_eq!(invalid[0].location, "/user/broken.zip");
         assert_eq!(

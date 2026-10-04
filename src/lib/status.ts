@@ -34,8 +34,10 @@ export function playbackStatus(s: AppState, p: Platform): Status {
   if (s.muted) return { label: 'Muted', tone: 'off' };
   if (s.autoMute === 'screenLocked') return { label: 'Muted — screen locked', tone: 'off' };
   if (s.autoMute === 'outputChanged') return { label: 'Muted — output device changed', tone: 'off' };
-  // No permission step (Windows and Linux for now, or the listener turned off): nothing to wait for.
+  // No permission prompt to wait for (Windows, Linux, or the listener turned off).
   if (s.permission !== 'granted' && !s.onboarding.permissionRequired) {
+    if (s.onboarding.inputGroupNeeded) return { label: 'Needs keyboard access', tone: 'warning' };
+    if (s.onboarding.relaunchSuggested) return { label: 'Key listener stopped', tone: 'warning' };
     return { label: 'Key sounds unavailable', tone: 'off' };
   }
   if (s.permission === 'denied') return { label: `Needs ${permissionName(p)}`, tone: 'warning' };
@@ -45,6 +47,25 @@ export function playbackStatus(s: AppState, p: Platform): Status {
   if (s.audio.state === 'starting') return { label: 'Starting audio…', tone: 'off' };
   return { label: 'Silent', tone: 'off' };
 }
+
+/** Where there is no key listener and nothing to grant (`TAKTAK_NO_INPUT=1`). */
+export const UNAVAILABLE =
+  'TakTak is running without its key listener, so typing makes no sound. You can still try the sound packs in Settings.';
+
+/** Windows and Linux: the listener failed to start (`relaunchSuggested`, no permission step). */
+export const RELAUNCH_OTHER =
+  'TakTak’s key listener couldn’t start. Quitting and reopening TakTak usually fixes it; your settings are kept.';
+
+/** Linux without the `input` group (`inputGroupNeeded`): why, and how. */
+export const INPUT_GROUP_WHY =
+  'On Wayland, apps can’t hear keys typed into other apps, so TakTak reads the keyboard devices directly. That needs your user in the input group: one command, then log out and back in.';
+
+/** …and what it costs, said every time it is offered. */
+export const INPUT_GROUP_COST =
+  'Be aware that the input group lets every program you run read every keystroke, passwords included. TakTak only uses which key went down or up, and never asks for root.';
+
+/** The command that joins the `input` group (takes effect at the next login). */
+export const INPUT_GROUP_COMMAND = 'sudo usermod -aG input $USER';
 
 /** What plays when no pack is loaded. */
 export const BUILT_IN_SOUND = 'Built-in click';
@@ -130,19 +151,37 @@ export function notices(s: AppState, p: Platform): Notice[] {
     });
   }
   if (s.permission !== 'granted' && !s.onboarding.permissionRequired) {
-    // No key listener and no permission that would bring one (as the onboarding's "unavailable").
-    const message =
-      p === 'mac'
-        ? 'TakTak was started without its key listener, so typing makes no sound.'
-        : `TakTak can’t hear key presses on ${p === 'windows' ? 'Windows' : 'Linux'} yet, so typing makes no sound. You can still try the sound packs in Settings.`;
-    list.push({
-      id: 'permission',
-      tone: 'info',
-      title: p === 'mac' ? 'Key sounds are turned off' : 'Key sounds aren’t available on this system yet',
-      message,
-      line: p === 'mac' ? 'Key sounds are turned off.' : 'Key sounds aren’t available on this system yet.',
-      actions: [],
-    });
+    if (s.onboarding.inputGroupNeeded) {
+      // Linux (Wayland, or TAKTAK_INPUT=evdev): the opt-in, with its cost; the guide has more.
+      list.push({
+        id: 'permission',
+        tone: 'warning',
+        title: 'Keyboard access needed',
+        message: `${INPUT_GROUP_WHY} The command is “${INPUT_GROUP_COMMAND}”. ${INPUT_GROUP_COST}`,
+        line: 'TakTak needs keyboard access (the input group) to play sounds.',
+        actions: ['guide'],
+      });
+    } else if (s.onboarding.relaunchSuggested) {
+      // Windows or Linux: the listener failed to start; there is no permission to grant.
+      list.push({
+        id: 'permission',
+        tone: 'warning',
+        title: 'TakTak needs to restart',
+        message: RELAUNCH_OTHER,
+        line: 'The key listener couldn’t start. Quit & Reopen usually fixes it.',
+        actions: ['relaunch'],
+      });
+    } else {
+      // No key listener and nothing that would bring one (as the onboarding's "unavailable").
+      list.push({
+        id: 'permission',
+        tone: 'info',
+        title: 'Key sounds are turned off',
+        message: UNAVAILABLE,
+        line: 'Key sounds are turned off.',
+        actions: [],
+      });
+    }
   } else if (s.permission !== 'granted') {
     const name = permissionName(p);
     const guide: NoticeAction[] = s.onboarding.permissionRequired ? ['guide'] : [];

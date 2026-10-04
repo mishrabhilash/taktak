@@ -14,6 +14,7 @@ function facts(patch: Partial<OnboardingFacts> = {}): OnboardingFacts {
     permission: 'denied',
     permissionRequired: true,
     relaunchSuggested: false,
+    inputGroupNeeded: false,
     openedAt: null,
     now: 100_000,
     ...patch,
@@ -40,7 +41,27 @@ describe('onboardingPhase', () => {
     );
   });
 
-  it('never says "all set" where there is no key listener (Windows, Linux, listener off)', () => {
+  it('explains the input group on Linux, and offers a restart where the listener failed (M5)', () => {
+    const linux = facts({ permissionRequired: false, inputGroupNeeded: true });
+    expect(onboardingPhase(linux)).toBe('inputGroup');
+    expect(onboardingStep(linux)).toMatchObject({
+      closeLabel: 'Done',
+      closePrimary: true,
+      troubleshoot: false,
+      troubleshootAvailable: false,
+    });
+    const failed = facts({ permissionRequired: false, relaunchSuggested: true });
+    expect(onboardingPhase(failed)).toBe('relaunch');
+    expect(onboardingStep(failed)).toMatchObject({
+      closeLabel: 'Later',
+      troubleshoot: false,
+      troubleshootAvailable: false,
+    });
+    // Listening after all: just the welcome.
+    expect(onboardingPhase({ ...linux, permission: 'granted' })).toBe('welcome');
+  });
+
+  it('never says "all set" where there is no key listener (listener off)', () => {
     expect(onboardingPhase(facts({ permissionRequired: false, permission: 'unknown' }))).toBe(
       'unavailable',
     );

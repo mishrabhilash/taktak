@@ -34,7 +34,12 @@ function state(patch: Partial<AppState['settings']> = {}, top: Partial<AppState>
     ruleBlocked: false,
     autoMute: null,
     rulesSupported: true,
-    onboarding: { offer: false, permissionRequired: true, relaunchSuggested: false },
+    onboarding: {
+      offer: false,
+      permissionRequired: true,
+      relaunchSuggested: false,
+      inputGroupNeeded: false,
+    },
     ...top,
   };
 }

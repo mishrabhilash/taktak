@@ -212,8 +212,8 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           includeUpdaterJson: false
           releaseBody: |
-            **TakTak is a fully offline app.** It never connects to the internet: no accounts, no
-            telemetry, no update checks. Keystrokes are never stored, logged or sent anywhere.
+            **TakTak is fully offline — it never uses the internet.** No accounts, no telemetry,
+            no update checks. Keystrokes are never stored, logged or sent anywhere.
 
             | OS | Download |
             |---|---|

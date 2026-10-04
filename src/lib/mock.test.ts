@@ -49,7 +49,12 @@ describe('mock backend', () => {
     expect(s.ruleBlocked).toBe(false);
     expect(s.autoMute).toBeNull();
     expect(s.rulesSupported).toBe(true);
-    expect(s.onboarding).toEqual({ offer: false, permissionRequired: true, relaunchSuggested: false });
+    expect(s.onboarding).toEqual({
+      offer: false,
+      permissionRequired: true,
+      relaunchSuggested: false,
+      inputGroupNeeded: false,
+    });
     expect(s.permission).toBe('granted');
     expect(s.audio.state).toBe('ok');
     expect(s.packs).toHaveLength(9);
@@ -473,6 +478,54 @@ describe('mock backend', () => {
     expect(s.settings.appRule.mode).toBe('only');
     expect(s.ruleBlocked).toBe(false);
     expect(s.playing).toBe(true);
+  });
+
+  it('scenario "inputgroup": Linux without the input group; no onboarding nag (M5)', async () => {
+    const { backend, call } = setup('?scenario=inputgroup');
+    const s = await call(backend.call('get_state', undefined));
+    expect(s.permission).toBe('denied');
+    expect(s.onboarding).toEqual({
+      offer: false,
+      permissionRequired: false,
+      relaunchSuggested: false,
+      inputGroupNeeded: true,
+    });
+    expect(s.playing).toBe(false);
+    expect(s.rulesSupported).toBe(false);
+  });
+
+  it('scenario "listenerfail": a relaunch fixes a listener that failed to start (M5)', async () => {
+    const { backend, events, call } = setup('?scenario=listenerfail');
+    const s = await call(backend.call('get_state', undefined));
+    expect(s.onboarding).toMatchObject({ permissionRequired: false, relaunchSuggested: true });
+    await call(backend.call('relaunch', undefined));
+    await settle(1600);
+    expect(events.at(-1)?.permission).toBe('granted');
+  });
+
+  it('imports a Mechvibes pack, then finds it imported, then fails, then is cancelled (M5)', async () => {
+    const { backend, events, call } = setup();
+    const first = await call(backend.call('import_mechvibes_pack', { kind: 'any' }));
+    expect(first).toMatchObject({ outcome: 'imported', pack: { id: 'mv-cream-linear', replaced: false } });
+    await settle(800);
+    const listed = events.at(-1)?.packs.find((p) => p.id === 'mv-cream-linear');
+    expect(listed).toMatchObject({ license: 'LicenseRef-Personal', origin: 'user' });
+
+    const again = await call(backend.call('import_mechvibes_pack', { kind: 'zip' }));
+    expect(again).toEqual({ outcome: 'alreadyImported', id: 'mv-cream-linear', source: 'cream-linear.zip' });
+    const replaced = await call(backend.call('overwrite_mechvibes_pack', undefined));
+    expect(replaced).toMatchObject({ outcome: 'imported', pack: { replaced: true } });
+    await settle(800);
+    // Still listed once.
+    expect(events.at(-1)?.packs.filter((p) => p.id === 'mv-cream-linear')).toHaveLength(1);
+    await expect(call(backend.call('overwrite_mechvibes_pack', undefined))).rejects.toMatch(
+      /no import waiting/,
+    );
+
+    await expect(call(backend.call('import_mechvibes_pack', { kind: 'folder' }))).rejects.toMatch(
+      /No usable sounds/,
+    );
+    expect(await call(backend.call('import_mechvibes_pack', { kind: 'any' }))).toBeNull();
   });
 
   it('hands out copies, so callers cannot change its state', async () => {

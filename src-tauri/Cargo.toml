@@ -22,6 +22,8 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 taktak-core = { path = "core" }
+# App icons as `data:` URLs (`apps::data_url`, compiled and tested on every OS).
+base64 = "0.22.1"
 log = "0.4.34"
 rtrb = "0.4.0"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -41,7 +43,6 @@ libc = "0.2.189"
 # Per-app rules and auto-mute (`src/apps.rs`): NSWorkspace observers (frontmost app, session),
 # the distributed screen-lock notifications, running apps, app icons and the app picker. The
 # same versions tao and wry already build.
-base64 = "0.22.1"
 block2 = "0.6.2"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = [
@@ -88,6 +89,10 @@ objc2-foundation = { version = "0.3.2", default-features = false, features = [
 # Per user session there. On macOS it uses a socket in the shared /tmp, so `src/instance.rs`
 # replaces it.
 tauri-plugin-single-instance = "2"
+# The native folder / .zip picker for "Import Mechvibes pack…" (`src/mechvibes.rs`), used from
+# Rust only (no JS API, no capability). macOS uses its own NSOpenPanel, which can offer folders
+# and .zip files in one panel.
+tauri-plugin-dialog = "2"
 
 [dev-dependencies]
 tempfile = "3.27.0"

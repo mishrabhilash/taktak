@@ -65,6 +65,15 @@ describe('api (mock backend)', () => {
     expect((await api.finishOnboarding()).settings.onboardingDone).toBe(true);
   });
 
+  it('round-trips the Milestone 5 import commands through the wrappers', async () => {
+    const imported = await api.importMechvibesPack('any');
+    expect(imported?.outcome).toBe('imported');
+    const again = await api.importMechvibesPack('zip');
+    expect(again).toMatchObject({ outcome: 'alreadyImported', id: 'mv-cream-linear' });
+    const replaced = await api.overwriteMechvibesPack();
+    expect(replaced.outcome === 'imported' && replaced.pack.replaced).toBe(true);
+  });
+
   it('void commands resolve to undefined', async () => {
     await expect(api.stopPreview()).resolves.toBeUndefined();
     await expect(api.openSettings()).resolves.toBeUndefined();

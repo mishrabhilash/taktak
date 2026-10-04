@@ -14,6 +14,8 @@ import type {
   CommandArgs,
   CommandResult,
   LatencyReport,
+  MechvibesImport,
+  PickKind,
   VariantMode,
   WindowLabel,
 } from './types';
@@ -134,3 +136,16 @@ export const openOnboarding = (): Promise<void> => call('open_onboarding');
 export const finishOnboarding = (): Promise<AppState> => call('finish_onboarding');
 /** Quits and starts TakTak again (the promise never settles in the app). */
 export const relaunch = (): Promise<void> => call('relaunch');
+
+// Milestone 5: importing Mechvibes packs.
+
+/**
+ * Opens the native picker for a Mechvibes pack folder or .zip and imports it into the user packs
+ * folder (it is listed within about a second). null when the picker was cancelled. Rejects with
+ * a message (not a pack, unsupported, no usable sounds, an import already running).
+ */
+export const importMechvibesPack = (kind: PickKind): Promise<MechvibesImport | null> =>
+  call('import_mechvibes_pack', { kind });
+/** Replaces the earlier import the last `importMechvibesPack` reported as "alreadyImported". */
+export const overwriteMechvibesPack = (): Promise<MechvibesImport> =>
+  call('overwrite_mechvibes_pack');

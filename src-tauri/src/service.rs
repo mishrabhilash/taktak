@@ -152,10 +152,25 @@ pub fn permission_state(hook_supported: bool, granted: bool, hook_failed: bool) 
     }
 }
 
-/// `onboarding.relaunchSuggested`: macOS reports Input Monitoring as granted, but the key
-/// listener still could not start (a relaunch usually fixes that).
-pub fn relaunch_suggested(hook_supported: bool, granted: bool, hook_failed: bool) -> bool {
-    hook_supported && granted && hook_failed
+/// `onboarding.relaunchSuggested`: the platform reports the permission as granted (macOS:
+/// Input Monitoring; Windows and Linux X11 have none to grant), but the key listener still could
+/// not start (a relaunch usually fixes that). Never while the Linux `input` group is what is
+/// missing ([`input_group_needed`]): restarting TakTak would not help there.
+pub fn relaunch_suggested(
+    hook_supported: bool,
+    granted: bool,
+    hook_failed: bool,
+    input_group: bool,
+) -> bool {
+    hook_supported && granted && hook_failed && !input_group
+}
+
+/// `onboarding.inputGroupNeeded` (M5): on Linux (`linux`), the listener has to read the keyboard
+/// devices (Wayland, or `TAKTAK_INPUT=evdev`) and cannot: `has_permission` says they are not
+/// readable (`!granted`), or the listener was refused (`refused`: the X11 backend failed and
+/// the evdev fallback could not open the devices).
+pub fn input_group_needed(linux: bool, hook_supported: bool, granted: bool, refused: bool) -> bool {
+    linux && hook_supported && (!granted || refused)
 }
 
 /// `onboarding.permissionRequired`: macOS with the key listener on.
@@ -736,6 +751,8 @@ struct Control {
     hook_supported: bool,
     /// Set while a key listener that failed to start waits to be tried again (not before then).
     hook_retry_at: Option<Instant>,
+    /// The last listener start was refused for lack of permission (until one starts).
+    hook_refused: bool,
     /// How long a per-app rule has silenced the app in front: the output closes once it is
     /// [`rules::CLOSE_AFTER`].
     rule_block: RuleBlock,
@@ -775,6 +792,7 @@ impl Control {
             permission: PermissionPoll::new(),
             hook_supported: true,
             hook_retry_at: None,
+            hook_refused: false,
             rule_block: RuleBlock::default(),
             devices: DeviceWatch::default(),
             active: Active::default(),
@@ -1371,6 +1389,7 @@ impl Control {
                     audio.listener = Some(listener);
                 }
                 self.hook_retry_at = None;
+                self.hook_refused = false;
             }
             Err(e) => self.on_hook_error(&e, now),
         }
@@ -1391,6 +1410,7 @@ impl Control {
                 );
                 self.permission.set(now, false);
                 self.hook_retry_at = Some(now + HOOK_RETRY);
+                self.hook_refused = true;
             }
             HookFailure::Failed => {
                 log::warn!("{error}; trying again in {retry} s");
@@ -1403,10 +1423,13 @@ impl Control {
         let (supported, granted, failed) =
             (self.hook_supported, self.permission.granted(), self.hook_retry_at.is_some());
         let permission = permission_state(supported, granted, failed);
-        let relaunch = relaunch_suggested(supported, granted, failed);
+        let input_group =
+            input_group_needed(cfg!(target_os = "linux"), supported, granted, self.hook_refused);
+        let relaunch = relaunch_suggested(supported, granted, failed, input_group);
         self.shared.update(|s| {
             s.permission = permission;
             s.onboarding.relaunch_suggested = relaunch;
+            s.onboarding.input_group_needed = input_group;
         });
     }
 }
@@ -1594,10 +1617,22 @@ mod tests {
 
     #[test]
     fn relaunch_is_suggested_when_the_hook_fails_despite_permission() {
-        assert!(relaunch_suggested(true, true, true));
-        assert!(!relaunch_suggested(true, false, true), "not granted: grant it first");
-        assert!(!relaunch_suggested(true, true, false), "listening");
-        assert!(!relaunch_suggested(false, true, true), "no listener on this platform");
+        assert!(relaunch_suggested(true, true, true, false));
+        assert!(!relaunch_suggested(true, false, true, false), "not granted: grant it first");
+        assert!(!relaunch_suggested(true, true, false, false), "listening");
+        assert!(!relaunch_suggested(false, true, true, false), "no listener on this platform");
+        assert!(!relaunch_suggested(true, true, true, true), "Linux: the input group is missing");
+    }
+
+    #[test]
+    fn the_input_group_is_needed_only_on_linux_without_device_access() {
+        // Wayland without the group: the devices are not readable.
+        assert!(input_group_needed(true, true, false, false));
+        // X11 looked fine, but its backend failed and evdev was refused.
+        assert!(input_group_needed(true, true, true, true));
+        assert!(!input_group_needed(true, true, true, false), "listening");
+        assert!(!input_group_needed(true, false, false, false), "TAKTAK_NO_INPUT");
+        assert!(!input_group_needed(false, true, false, true), "macOS: Input Monitoring instead");
     }
 
     #[test]

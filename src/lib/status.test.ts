@@ -43,7 +43,12 @@ function state(top: Partial<AppState> = {}, enabled = true): AppState {
     ruleBlocked: false,
     autoMute: null,
     rulesSupported: true,
-    onboarding: { offer: false, permissionRequired: true, relaunchSuggested: false },
+    onboarding: {
+      offer: false,
+      permissionRequired: true,
+      relaunchSuggested: false,
+      inputGroupNeeded: false,
+    },
     ...top,
   };
 }
@@ -258,7 +263,12 @@ describe('notices (Milestone 4)', () => {
       state({
         playing: false,
         permission: 'denied',
-        onboarding: { offer: true, permissionRequired: true, relaunchSuggested: true },
+        onboarding: {
+          offer: true,
+          permissionRequired: true,
+          relaunchSuggested: true,
+          inputGroupNeeded: false,
+        },
       }),
       'mac',
     );
@@ -267,18 +277,23 @@ describe('notices (Milestone 4)', () => {
     expect(actionLabel('relaunch', 'mac')).toBe('Quit & Reopen');
   });
 
-  it('says key sounds are unavailable where there is no permission step', () => {
+  it('says key sounds are unavailable where there is no listener and nothing to grant', () => {
     const s = state({
       playing: false,
       permission: 'unknown',
-      onboarding: { offer: false, permissionRequired: false, relaunchSuggested: false },
+      onboarding: {
+        offer: false,
+        permissionRequired: false,
+        relaunchSuggested: false,
+        inputGroupNeeded: false,
+      },
     });
     const [n] = notices(s, 'linux');
     expect(n?.id).toBe('permission');
     expect(n?.tone).toBe('info');
     expect(n?.actions).toEqual([]);
-    expect(n?.title).toBe('Key sounds aren’t available on this system yet');
-    expect(n?.message).toContain('Linux');
+    expect(n?.title).toBe('Key sounds are turned off');
+    expect(n?.message).toContain('without its key listener');
     expect(notices(s, 'mac')[0]?.title).toBe('Key sounds are turned off');
     expect(playbackStatus(s, 'windows')).toEqual({ label: 'Key sounds unavailable', tone: 'off' });
     // Still waiting where a permission would bring the listener.
@@ -286,6 +301,46 @@ describe('notices (Milestone 4)', () => {
     expect(playbackStatus(waiting, 'mac').label).toBe('Waiting for Input Monitoring');
     // Muted by hand still comes first.
     expect(playbackStatus({ ...s, muted: true }, 'linux').label).toBe('Muted');
+  });
+
+  it('explains the Linux input group, with the command and its cost (M5)', () => {
+    const s = state({
+      playing: false,
+      permission: 'denied',
+      onboarding: {
+        offer: false,
+        permissionRequired: false,
+        relaunchSuggested: false,
+        inputGroupNeeded: true,
+      },
+    });
+    expect(playbackStatus(s, 'linux')).toEqual({ label: 'Needs keyboard access', tone: 'warning' });
+    const [n] = notices(s, 'linux');
+    expect(n).toMatchObject({ id: 'permission', tone: 'warning', actions: ['guide'] });
+    expect(n?.message).toContain('sudo usermod -aG input $USER');
+    expect(n?.message).toContain('log out');
+    expect(n?.message).toContain('every program you run read every keystroke');
+    expect(n?.message).not.toContain('Input Monitoring');
+  });
+
+  it('a failed listener on Windows or Linux offers Quit & Reopen without macOS words (M5)', () => {
+    const s = state({
+      playing: false,
+      permission: 'denied',
+      onboarding: {
+        offer: false,
+        permissionRequired: false,
+        relaunchSuggested: true,
+        inputGroupNeeded: false,
+      },
+    });
+    for (const p of ['windows', 'linux'] as const) {
+      expect(playbackStatus(s, p)).toEqual({ label: 'Key listener stopped', tone: 'warning' });
+      const [n] = notices(s, p);
+      expect(n).toMatchObject({ title: 'TakTak needs to restart', actions: ['relaunch'] });
+      expect(n?.message).not.toMatch(/macOS|Input Monitoring/);
+      expect(n?.line).not.toMatch(/macOS|Input Monitoring/);
+    }
   });
 
   it('orders auto-mute first and rules last', () => {

@@ -171,7 +171,12 @@ function appState(top: Partial<AppState>, appRule: AppRule): AppState {
     ruleBlocked: false,
     autoMute: null,
     rulesSupported: true,
-    onboarding: { offer: false, permissionRequired: true, relaunchSuggested: false },
+    onboarding: {
+      offer: false,
+      permissionRequired: true,
+      relaunchSuggested: false,
+      inputGroupNeeded: false,
+    },
     ...top,
   };
 }

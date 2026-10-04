@@ -3,13 +3,14 @@
   import Logo from '../../components/Logo.svelte';
   import { getLatency } from '../../lib/api';
   import { formatMs } from '../../lib/format';
+  import { OFFLINE } from '../../lib/offline';
   import type { AppState, LatencyReport } from '../../lib/types';
 
   let { s }: { s: AppState } = $props();
 
   /** The promise, word for word, wherever TakTak states it. */
   const PRIVACY =
-    'TakTak never stores, logs or sends what you type. It only uses which key went down or up, in memory, to pick a sound. No network, no analytics.';
+    'TakTak never stores, logs or sends what you type. It only uses which key went down or up, in memory, to pick a sound. No accounts, no analytics, no update checks.';
 
   let latency = $state<LatencyReport | null>(null);
   let latencyError = $state(false);
@@ -59,6 +60,7 @@
 <div class="group privacy">
   <span class="privacy-icon"><Icon name="shield" size={20} /></span>
   <div>
+    <p class="offline">{OFFLINE}</p>
     <h2 class="row-label">Your typing stays yours</h2>
     <p class="privacy-text">{PRIVACY}</p>
   </div>
@@ -151,6 +153,14 @@
 
   .privacy-icon {
     color: var(--accent-text);
+  }
+
+  .offline {
+    margin-bottom: 10px;
+    color: var(--accent-text);
+    font-size: 15px;
+    font-weight: 650;
+    line-height: 1.35;
   }
 
   .privacy h2 {

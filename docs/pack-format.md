@@ -257,7 +257,7 @@ checks, and the loudness rule in `tools/synth-packs` (next to the measurement):
 |---|---|---|
 | macOS | `TakTak.app/Contents/Resources/packs` | `~/Library/Application Support/tech.taktak.app/packs` |
 | Windows | `<install dir>\packs` | `%APPDATA%\tech.taktak.app\packs` |
-| Linux | `/usr/share/taktak/packs` (or next to the AppImage) | `~/.local/share/tech.taktak.app/packs` |
+| Linux | `/usr/lib/TakTak/packs` (`.deb`); inside the AppImage, `$APPDIR/usr/lib/TakTak/packs` | `~/.local/share/tech.taktak.app/packs` |
 
 Every direct child of a packs directory that is either a folder containing `pack.json` or a
 `.zip` file is a pack. Hidden entries (names starting with `.`) and everything else are
@@ -318,7 +318,11 @@ user pack folder (see [Where packs live](#where-packs-live)), where the running 
 new pack up within a second. For each pack the tool prints the new id, the keys mapped, the
 key codes skipped, missing and unreadable files, and warnings. Exit status: 0 when every pack
 was imported, 1 when one failed, 64 for a usage error. The importer is the `pack::import`
-module of `taktak-core`, so the app can offer the same thing.
+module of `taktak-core`, and the app offers the same thing: **Settings → Sounds → Import
+Mechvibes pack…** opens the system's picker for a pack folder or `.zip`, imports into the user
+pack folder on a worker thread, shows what was mapped and any notes, and offers to replace an
+earlier import of the same pack (the CLI's `--overwrite`). Release splitting is always on
+there.
 
 ### What can be imported
 

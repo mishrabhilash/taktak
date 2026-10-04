@@ -117,7 +117,9 @@ negotiable, and CI enforces the mechanical parts.
    DNS, sockets (`std::net`), update checkers, telemetry, crash reporters or analytics, in the
    app or the tools. In the UI: no `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource` or
    `sendBeacon`, and no remote fonts, images or scripts. The CSP's `connect-src` stays limited
-   to Tauri's IPC.
+   to Tauri's IPC. The app promises it to every user, in so many words ("TakTak is fully
+   offline — it never uses the internet.", `src/lib/offline.ts`, shown in the welcome window,
+   Settings → About and the tray popover): any change that would make that untrue is out.
 4. **No files about the user.** Settings only; logs go to stderr, never to a file.
 
 `npm run no-network` ([scripts/no-network.mjs](scripts/no-network.mjs)) enforces rule 3. It

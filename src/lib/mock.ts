@@ -19,6 +19,14 @@
 //   locked        the screen is locked (auto-muted) and unlocks after 4 s
 //   outputchange  "mute when the output changes" is on; 3 s in, the output moves to AirPods Pro
 //   unsupported   no per-app rules and no permission step (like Windows and Linux)
+// Milestone 5:
+//   inputgroup    Linux Wayland without the `input` group: the listener can't read the
+//                 keyboard devices (inputGroupNeeded), no per-app rules
+//   listenerfail  Windows or Linux whose key listener failed to start (relaunchSuggested without
+//                 a permission step); `relaunch` fixes it after 1.5 s
+// "Import Mechvibes pack…" answers in turn: an import (the pack is listed 0.7 s later), the
+// same pack again (alreadyImported; overwrite_mechvibes_pack replaces it), a pack with no usable
+// sounds (rejected), and a cancelled picker (null).
 // Pick the view with ?window=tray, ?window=onboarding or ?window=settings (default).
 
 import { version } from '../../package.json';
@@ -32,7 +40,9 @@ import type {
   CommandArgs,
   CommandResult,
   Commands,
+  ImportSummary,
   LatencyReport,
+  MechvibesImport,
   PackSummary,
   Settings,
 } from './types';
@@ -115,6 +125,37 @@ const SWITCHING = [
 ];
 
 const KNOWN_APPS = [...RUNNING, ...CHOOSABLE.filter((a): a is FakeApp => a !== null)];
+
+/** What the mock's Mechvibes import writes. */
+const IMPORTED: ImportSummary = {
+  id: 'mv-cream-linear',
+  name: 'Cream Linear',
+  source: 'cream-linear.zip',
+  format: 'Mechvibes v2',
+  keysMapped: 84,
+  keysWithRelease: 12,
+  soundsWritten: 96,
+  replaced: false,
+  warnings: ['Skipped key “3640”: unknown key code', 'Missing file: sounds/F13.wav'],
+};
+
+/** How the mock lists an imported pack (what the app's registry reports for it). */
+const IMPORTED_PACK: PackSummary = {
+  id: IMPORTED.id,
+  name: IMPORTED.name,
+  author: 'Unknown (imported from Mechvibes)',
+  license: 'LicenseRef-Personal',
+  description: 'Imported from the Mechvibes pack "Cream Linear" for personal use; not for redistribution.',
+  attribution: null,
+  origin: 'user',
+  hasRelease: true,
+  perKey: true,
+  warnings: [],
+};
+
+/** The importer's rejection for a pack without usable sounds (mechvibes.rs). */
+const NO_SOUNDS =
+  'No usable sounds in this pack: every sound file it names is missing. Check that the folder or .zip still has the sound files its config.json names, in a format TakTak reads (WAV, Ogg Vorbis or MP3).';
 
 function fakeApp(id: string): FakeApp {
   const app = KNOWN_APPS.find((a) => a.id === id);
@@ -208,7 +249,12 @@ function initialState(scenarios: Set<string>): AppState {
     ruleBlocked: false,
     autoMute: null,
     rulesSupported: true,
-    onboarding: { offer: false, permissionRequired: true, relaunchSuggested: false },
+    onboarding: {
+      offer: false,
+      permissionRequired: true,
+      relaunchSuggested: false,
+      inputGroupNeeded: false,
+    },
   };
   // A returning user, unless ?scenario=firstrun.
   state.settings.onboardingDone = !scenarios.has('firstrun');
@@ -229,6 +275,16 @@ function initialState(scenarios: Set<string>): AppState {
     state.rulesSupported = false;
     state.frontmostApp = null;
     state.onboarding.permissionRequired = false;
+  }
+  if (scenarios.has('inputgroup') || scenarios.has('listenerfail')) {
+    state.rulesSupported = false;
+    state.frontmostApp = null;
+    state.onboarding.permissionRequired = false;
+    state.permission = 'denied';
+    state.audio.device = 'Built-in Audio Analog Stereo';
+    state.userPacksDir = '/home/you/.local/share/tech.taktak.app/packs';
+    if (scenarios.has('inputgroup')) state.onboarding.inputGroupNeeded = true;
+    else state.onboarding.relaunchSuggested = true;
   }
   if (scenarios.has('fault')) {
     state.audio = {
@@ -334,6 +390,20 @@ export function createMockBackend(
   /** The two auto-mute reasons, tracked apart like the app does; `autoMute` shows the stronger. */
   const autoMute = { screenLocked: scenarios.has('locked'), outputChanged: false };
   let chosen = 0;
+  /** Which import answer comes next (see the header comment). */
+  let imports = 0;
+  /** An "alreadyImported" answer waits for overwrite_mechvibes_pack. */
+  let overwritePending = false;
+
+  /** The app writes the pack; its registry lists it about 0.7 s later. */
+  function imported(replaced: boolean): MechvibesImport {
+    void wait(700).then(() =>
+      change((s) => {
+        s.packs = [...s.packs.filter((p) => p.id !== IMPORTED_PACK.id), IMPORTED_PACK].sort(byName);
+      }),
+    );
+    return { outcome: 'imported', pack: { ...IMPORTED, replaced } };
+  }
 
   /** The derived fields, as the app computes them (docs/ui-contract.md). */
   function snapshot(): AppState {
@@ -541,6 +611,26 @@ export function createMockBackend(
     finish_onboarding: () => {
       console.info('[mock] close the onboarding window');
       return change((s) => (s.settings.onboardingDone = true));
+    },
+    import_mechvibes_pack: ({ kind }) => {
+      console.info(`[mock] pick a Mechvibes pack (${kind})`);
+      const turn = imports % 4;
+      imports += 1;
+      overwritePending = false;
+      if (turn === 0) return imported(false);
+      if (turn === 1) {
+        overwritePending = true;
+        return { outcome: 'alreadyImported', id: IMPORTED.id, source: IMPORTED.source };
+      }
+      if (turn === 2) throw NO_SOUNDS;
+      return null;
+    },
+    overwrite_mechvibes_pack: () => {
+      if (!overwritePending) {
+        throw 'There is no import waiting to be replaced. Choose the pack again with Import Mechvibes pack…';
+      }
+      overwritePending = false;
+      return imported(true);
     },
     relaunch: () => {
       console.info('[mock] relaunch');

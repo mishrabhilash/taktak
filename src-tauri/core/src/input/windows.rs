@@ -17,7 +17,12 @@
 //!   not delivered to a hook in a normal process, so TakTak is silent there. The secure desktop
 //!   (sign-in, lock screen, UAC prompts) is never visible to any hook.
 //! - **Removal.** A hook Windows removed after a timeout cannot be detected from inside the
-//!   process; [`HookHandle::take_reenabled`] always reports 0.
+//!   process; [`HookHandle::take_reenabled`] always reports 0. As a cheap, event-driven guard
+//!   the thread reinstalls the hook whenever the session is unlocked or reconnected
+//!   (`WM_WTSSESSION_CHANGE`) and when the system resumes from sleep (`WM_POWERBROADCAST`),
+//!   the moments a hook is most often lost. Both arrive at a hidden, never shown window this
+//!   thread owns (`WTSRegisterSessionNotification`; power broadcasts reach every top-level
+//!   window). No polling.
 
 use super::keymap_windows::from_hook;
 use super::{InputError, KeyEvent, PressState};
@@ -25,15 +30,27 @@ use crate::clock;
 use std::cell::Cell;
 use std::sync::mpsc;
 use std::thread::JoinHandle;
-use windows_sys::Win32::Foundation::{GetLastError, LPARAM, LRESULT, WPARAM};
+use windows_sys::Win32::Foundation::{
+    ERROR_CLASS_ALREADY_EXISTS, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
+};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::RemoteDesktop::{
+    NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification, WTSUnRegisterSessionNotification,
+};
 use windows_sys::Win32::System::Threading::{
     GetCurrentThread, GetCurrentThreadId, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, HC_ACTION, KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, PeekMessageW,
-    PostThreadMessageW, SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_QUIT, WM_USER,
+    CallNextHookEx, CreateWindowExW, DefWindowProcW, DestroyWindow, DispatchMessageW, GetMessageW,
+    HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG, PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND,
+    PM_NOREMOVE, PeekMessageW, PostThreadMessageW, RegisterClassW, SetWindowsHookExW,
+    UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_POWERBROADCAST, WM_QUIT, WM_USER,
+    WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_TOOLWINDOW, WS_OVERLAPPED, WTS_CONSOLE_CONNECT,
+    WTS_REMOTE_CONNECT, WTS_SESSION_UNLOCK,
 };
+
+/// Posted to the hook thread (by [`watch_proc`]) to reinstall the hook.
+const WM_REINSTALL: u32 = WM_APP + 1;
 
 struct HookState {
     callback: Box<dyn FnMut(KeyEvent) + Send>,
@@ -66,6 +83,105 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     }
     // Always pass the event on: TakTak never blocks or alters input.
     unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+}
+
+/// Whether a session or power notification calls for reinstalling the hook: the session was
+/// unlocked or (re)connected, or the system resumed from sleep.
+fn reinstall_after(msg: u32, wparam: WPARAM) -> bool {
+    let event = wparam as u32;
+    match msg {
+        WM_WTSSESSION_CHANGE => {
+            matches!(event, WTS_SESSION_UNLOCK | WTS_CONSOLE_CONNECT | WTS_REMOTE_CONNECT)
+        }
+        WM_POWERBROADCAST => matches!(event, PBT_APMRESUMEAUTOMATIC | PBT_APMRESUMESUSPEND),
+        _ => false,
+    }
+}
+
+/// The hidden watch window's procedure. Both notifications are *sent*, so they run inside
+/// `GetMessageW` without making it return; posting a thread message wakes the loop, which
+/// reinstalls the hook outside this call.
+unsafe extern "system" fn watch_proc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
+    if reinstall_after(msg, wparam) {
+        unsafe { PostThreadMessageW(GetCurrentThreadId(), WM_REINSTALL, 0, 0) };
+    }
+    unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+/// UTF-16, NUL-terminated.
+fn wide(s: &str) -> Vec<u16> {
+    s.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+/// Creates the hidden window that receives session and power notifications, or `None` (the
+/// hook then simply is not reinstalled). Never shown; a tool window, so it would stay off the
+/// taskbar and Alt+Tab even if something showed it.
+unsafe fn create_watch_window(instance: HINSTANCE) -> Option<HWND> {
+    let class = wide("TakTakInputWatch");
+    let mut wc: WNDCLASSW = unsafe { std::mem::zeroed() };
+    wc.lpfnWndProc = Some(watch_proc);
+    wc.hInstance = instance;
+    wc.lpszClassName = class.as_ptr();
+    // Registered once per process; later listeners find it there.
+    if unsafe { RegisterClassW(&wc) } == 0
+        && unsafe { GetLastError() } != ERROR_CLASS_ALREADY_EXISTS
+    {
+        log::warn!("keyboard hook: no session watch (RegisterClassW error {})", unsafe {
+            GetLastError()
+        });
+        return None;
+    }
+    let hwnd = unsafe {
+        CreateWindowExW(
+            WS_EX_TOOLWINDOW,
+            class.as_ptr(),
+            class.as_ptr(),
+            WS_OVERLAPPED,
+            0,
+            0,
+            0,
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            instance,
+            std::ptr::null(),
+        )
+    };
+    if hwnd.is_null() {
+        log::warn!("keyboard hook: no session watch (CreateWindowExW error {})", unsafe {
+            GetLastError()
+        });
+        return None;
+    }
+    if unsafe { WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION) } == 0 {
+        // Power resumes still arrive; only unlocks are missed.
+        log::warn!("keyboard hook: no unlock notifications (error {})", unsafe { GetLastError() });
+    }
+    Some(hwnd)
+}
+
+/// Removes `old` (if any) and installs the hook again, forgetting held keys (their ups went to
+/// the lock screen or were lost in sleep). Returns the new hook, null if that failed (the next
+/// unlock or resume tries again).
+unsafe fn reinstall(old: HHOOK, instance: HINSTANCE) -> HHOOK {
+    if !old.is_null() {
+        unsafe { UnhookWindowsHookEx(old) };
+    }
+    let state = STATE.with(Cell::get);
+    if !state.is_null() {
+        // SAFETY: owned by this thread (see `run_hook`); the hook is not installed right now.
+        unsafe { (*state).press.clear() };
+    }
+    let hook = unsafe { SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), instance, 0) };
+    if hook.is_null() {
+        log::warn!("keyboard hook could not be reinstalled (error {})", unsafe { GetLastError() });
+    }
+    hook
 }
 
 pub struct HookHandle {
@@ -109,12 +225,8 @@ fn run_hook(
 
         let state = Box::into_raw(Box::new(HookState { callback, press: PressState::default() }));
         STATE.with(|s| s.set(state));
-        let hook = SetWindowsHookExW(
-            WH_KEYBOARD_LL,
-            Some(hook_proc),
-            GetModuleHandleW(std::ptr::null()),
-            0,
-        );
+        let instance = GetModuleHandleW(std::ptr::null());
+        let mut hook = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook_proc), instance, 0);
         if hook.is_null() {
             let error = GetLastError();
             STATE.with(|s| s.set(std::ptr::null_mut()));
@@ -125,13 +237,28 @@ fn run_hook(
             return;
         }
         let _ = ready.send(Ok(GetCurrentThreadId()));
+        let watch = create_watch_window(instance);
 
-        // The hook procedure runs inside GetMessageW. No windows belong to this thread, so the
-        // only message is the WM_QUIT from `HookHandle::drop` (GetMessageW returns 0; -1 is an
-        // error, which cannot happen with these arguments but must not spin).
-        while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {}
+        // The hook procedure and the watch window's (sent) notifications run inside
+        // GetMessageW. What it returns: WM_REINSTALL from `watch_proc`, anything posted to the
+        // watch window, and the WM_QUIT from `HookHandle::drop` (GetMessageW returns 0; -1 is
+        // an error, which cannot happen with these arguments but must not spin).
+        while GetMessageW(&mut msg, std::ptr::null_mut(), 0, 0) > 0 {
+            if msg.hwnd.is_null() && msg.message == WM_REINSTALL {
+                log::debug!("session unlocked or system resumed; reinstalling the keyboard hook");
+                hook = reinstall(hook, instance);
+            } else {
+                DispatchMessageW(&msg);
+            }
+        }
 
-        UnhookWindowsHookEx(hook);
+        if let Some(hwnd) = watch {
+            WTSUnRegisterSessionNotification(hwnd);
+            DestroyWindow(hwnd);
+        }
+        if !hook.is_null() {
+            UnhookWindowsHookEx(hook);
+        }
         STATE.with(|s| s.set(std::ptr::null_mut()));
         drop(Box::from_raw(state));
     }
@@ -145,5 +272,24 @@ impl Drop for HookHandle {
         if let Some(t) = self.thread.take() {
             let _ = t.join();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unlocks_reconnects_and_resumes_reinstall_the_hook() {
+        for event in [WTS_SESSION_UNLOCK, WTS_CONSOLE_CONNECT, WTS_REMOTE_CONNECT] {
+            assert!(reinstall_after(WM_WTSSESSION_CHANGE, event as WPARAM));
+        }
+        for event in [PBT_APMRESUMEAUTOMATIC, PBT_APMRESUMESUSPEND] {
+            assert!(reinstall_after(WM_POWERBROADCAST, event as WPARAM));
+        }
+        // Lock (7) and suspend (4) do not; nothing else does.
+        assert!(!reinstall_after(WM_WTSSESSION_CHANGE, 7));
+        assert!(!reinstall_after(WM_POWERBROADCAST, 4));
+        assert!(!reinstall_after(WM_USER, WTS_SESSION_UNLOCK as WPARAM));
     }
 }

@@ -11,8 +11,10 @@
 
 use crate::service::Service;
 use crate::settings::unit;
-use crate::state::{AppInfo, AppRuleMode, AppState, LatencyReport, VariantMode};
-use crate::{apps, automute, hotkey, relaunch as restart, rules, system, tray, windows};
+use crate::state::{
+    AppInfo, AppRuleMode, AppState, LatencyReport, MechvibesImport, PickKind, VariantMode,
+};
+use crate::{apps, automute, hotkey, mechvibes, relaunch as restart, rules, system, tray, windows};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::mpsc;
@@ -333,4 +335,77 @@ pub async fn relaunch<R: Runtime>(app: AppHandle<R>) -> CmdResult<()> {
     windows::mark_exiting();
     app.exit(0);
     Ok(())
+}
+
+/// The user packs folder, or a message when this system has none.
+fn user_packs_dir(service: &Service) -> CmdResult<PathBuf> {
+    service
+        .snapshot()
+        .user_packs_dir
+        .map(PathBuf::from)
+        .ok_or_else(|| mechvibes::NO_USER_DIR.into())
+}
+
+/// Opens the native picker for a pack folder or `.zip` and resolves when it closes: the chosen
+/// path, or `None` when cancelled. Never on the main thread (macOS: the panel runs there, this
+/// waits for it here).
+async fn pick_pack<R: Runtime>(app: &AppHandle<R>, kind: PickKind) -> CmdResult<Option<PathBuf>> {
+    const NOT_OPENED: &str = "The pack chooser could not be opened.";
+    #[cfg(target_os = "macos")]
+    let picked = {
+        let _ = kind; // one panel takes both
+        let (tx, rx) = mpsc::channel();
+        app.run_on_main_thread(move || {
+            mechvibes::pick(Box::new(move |result| {
+                let _ = tx.send(result);
+            }));
+        })
+        .map_err(|e| format!("{NOT_OPENED} {e}"))?;
+        tauri::async_runtime::spawn_blocking(move || rx.recv())
+            .await
+            .map_err(|e| format!("{NOT_OPENED} {e}"))?
+            .map_err(|_| "The pack chooser closed unexpectedly.".to_owned())?
+    };
+    #[cfg(not(target_os = "macos"))]
+    let picked = {
+        let app = app.clone();
+        tauri::async_runtime::spawn_blocking(move || mechvibes::pick_blocking(&app, kind))
+            .await
+            .map_err(|e| format!("{NOT_OPENED} {e}"))?
+    };
+    picked
+}
+
+/// Imports on a worker thread (decoding and writing can take seconds for a large pack).
+async fn run_import(src: PathBuf, dest: PathBuf, overwrite: bool) -> CmdResult<MechvibesImport> {
+    tauri::async_runtime::spawn_blocking(move || mechvibes::import(&src, &dest, overwrite))
+        .await
+        .map_err(|e| format!("The import stopped unexpectedly: {e}"))?
+}
+
+/// (M5) "Import Mechvibes pack…": the native picker (a folder or a `.zip`), then the import into
+/// the user packs folder on a worker thread; the registry's hot reload lists the new pack within
+/// about a second. `None` when the picker was cancelled. One import at a time.
+#[tauri::command]
+pub async fn import_mechvibes_pack<R: Runtime>(
+    app: AppHandle<R>,
+    service: State<'_, Service>,
+    kind: PickKind,
+) -> CmdResult<Option<MechvibesImport>> {
+    let dest = user_packs_dir(&service)?;
+    let _busy = mechvibes::Busy::take()?;
+    let Some(src) = pick_pack(&app, kind).await? else {
+        return Ok(None);
+    };
+    run_import(src, dest, false).await.map(Some)
+}
+
+/// (M5) Replaces the earlier import that the last `import_mechvibes_pack` found (its
+/// `alreadyImported` outcome), from the same source. Rejects when there is none.
+#[tauri::command]
+pub async fn overwrite_mechvibes_pack(service: State<'_, Service>) -> CmdResult<MechvibesImport> {
+    let dest = user_packs_dir(&service)?;
+    let _busy = mechvibes::Busy::take()?;
+    let src = mechvibes::take_pending().ok_or(mechvibes::NOTHING_TO_OVERWRITE)?;
+    run_import(src, dest, true).await
 }

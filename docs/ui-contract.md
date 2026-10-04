@@ -1,4 +1,4 @@
-# TakTak app ↔ UI contract (Milestones 3–4)
+# TakTak app ↔ UI contract (Milestones 3–5)
 
 The Tauri app crate (`src-tauri`, Rust) owns all state and talks to `taktak-core`. The web
 UI (`src/`, Svelte 5 + TypeScript) is a thin view: it renders `AppState`, calls commands, and
@@ -6,7 +6,10 @@ re-renders on the `state-changed` event. The UI never reads files, never touches
 never sees what the user types.
 
 Milestone 4 adds per-app rules, auto-mute and the macOS permission onboarding. Everything from
-Milestone 3 keeps working unchanged; every Milestone 4 addition is marked **(M4)**.
+Milestone 3 keeps working unchanged; every Milestone 4 addition is marked **(M4)**. Milestone 5
+adds the in-app Mechvibes import, the "fully offline" statement in the UI, and the Windows and
+Linux listener cases (the Linux `input` group, platform-specific restart texts); its additions
+are marked **(M5)**.
 
 ## Windows
 
@@ -45,6 +48,8 @@ list), `Mute` (check, shows the hotkey), `Settings…`, `Quit TakTak`. Tooltip: 
   | `autoMute === "screenLocked"` | `Muted — screen locked` | disabled |
   | `autoMute === "outputChanged"` | `Muted — output device changed` | disabled |
   | `permission === "denied"` (macOS) | `Needs Input Monitoring…` | enabled: opens the onboarding window |
+  | `permission === "denied"`, Linux, `onboarding.inputGroupNeeded` **(M5)** | `Needs keyboard access…` | enabled: opens the onboarding window |
+  | `permission === "denied"`, Windows or Linux otherwise **(M5)** | `Key listener stopped…` | enabled: opens the onboarding window |
   | `audio.state === "fault"` | `No sound output` | disabled |
   | `ruleBlocked` | `Silent in <app>` (`Silent in this app` when `frontmostApp` is null) | disabled |
 
@@ -112,9 +117,13 @@ interface OnboardingStatus {
                              // permissionRequired && permission === "denied" (live)
   permissionRequired: boolean; // the platform needs a permission the user grants (macOS with
                              // the key listener on); false: the window skips the permission step
-  relaunchSuggested: boolean;  // macOS reports Input Monitoring as granted, but the key listener
-                             // still cannot start: a relaunch usually fixes it (permission
-                             // shows "denied" meanwhile)
+  relaunchSuggested: boolean;  // the permission looks granted (macOS: Input Monitoring; Windows
+                             // and Linux X11 have none to grant) but the key listener still
+                             // cannot start: a relaunch usually fixes it (permission shows
+                             // "denied" meanwhile). Never together with inputGroupNeeded
+  inputGroupNeeded: boolean;   // (M5) Linux: the listener must read the keyboard devices
+                             // (Wayland, or TAKTAK_INPUT=evdev) and cannot: the user is not in
+                             // the `input` group (permission shows "denied" meanwhile)
 }
 
 interface PackSummary {
@@ -180,6 +189,29 @@ interface LatencyReport {     // timings only, never key identities
   totalP50Ms: number; totalP95Ms: number; totalMaxMs: number;
   inputP50Ms: number; queueP50Ms: number; outputMs: number;
 }
+
+// (M5) Importing Mechvibes packs
+type PickKind = "any" | "folder" | "zip";  // macOS: one panel takes a folder or a .zip,
+                             // whatever the kind. Windows and Linux pickers take one or the
+                             // other; "any" is the .zip picker there
+
+interface ImportSummary {    // what an import wrote; every string is pack content, escaped
+  id: string;                // the new pack's id ("mv-<name>"), listed in packs within ~1 s
+  name: string;
+  source: string;            // the source folder or .zip file name
+  format: string;            // e.g. "Mechvibes v2", "MechvibesDX config v2"
+  keysMapped: number;        // keys with a sound of their own
+  keysWithRelease: number;   // how many of them also have their own release sound
+  soundsWritten: number;     // sound files written (the preview not counted)
+  replaced: boolean;         // an earlier import of the same pack was replaced
+  warnings: string[];        // skipped keys, missing or unreadable files, other notes; at most
+}                            // 30 lines (the last then says how many more)
+
+type MechvibesImport =
+  | { outcome: "imported"; pack: ImportSummary }
+  | { outcome: "alreadyImported"; id: string; source: string };  // imported before (same id,
+                             // same source name); nothing changed; overwrite_mechvibes_pack
+                             // replaces it
 ```
 
 ## Commands (`invoke`)
@@ -215,7 +247,9 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 | `set_mute_on_output_change` **(M4)** | `{ enabled: boolean }` | Persisted. `false` also clears an `outputChanged` auto-mute. |
 | `open_onboarding` **(M4)** | — | Shows/creates the onboarding window (activating TakTak). Returns `void`. Async (window creation off the main thread). |
 | `finish_onboarding` **(M4)** | — | Sets `settings.onboardingDone = true` (persisted), then closes the onboarding window if it is open. Returns the new `AppState`. |
-| `relaunch` **(M4)** | — | Quits like `quit` (pending settings saved, audio stopped) and starts TakTak again. Returns `void` (the promise never settles). For when macOS only lets a relaunched TakTak listen. See "Relaunch" for what the app must guarantee. |
+| `relaunch` **(M4)** | — | Quits like `quit` (pending settings saved, audio stopped) and starts TakTak again. Returns `void` (the promise never settles). For when macOS only lets a relaunched TakTak listen (**(M5)** and for a Windows or Linux key listener that failed to start). See "Relaunch" for what the app must guarantee. |
+| `import_mechvibes_pack` **(M5)** | `{ kind: PickKind }` | Opens the native picker for a Mechvibes pack (its folder, the one with `config.json`, or its `.zip`), then converts it into the user packs folder on a worker thread (never the main thread) and returns `MechvibesImport`, or `null` when the picker was cancelled. The pack is written to a hidden folder, validated and only then moved into place, so hot reload lists it (as `origin: "user"`, `license: "LicenseRef-Personal"`) within about a second, without a restart. One import at a time. Rejects with a user-facing message: not a Mechvibes pack (with a hint to choose the folder with `config.json` or the `.zip`), an unreadable `config.json`, an unsupported pack (mouse packs, unknown config versions; names the supported formats), no usable sounds (with a hint to check that the files `config.json` names are there and readable), file errors, no user packs folder ("This system has no folder for your own packs."), and an import or picker already running ("TakTak is already importing a pack, or its pack chooser is still open."). Async: resolves when the import is done. |
+| `overwrite_mechvibes_pack` **(M5)** | — | Imports again, replacing the earlier import, the source of the last `import_mechvibes_pack` that returned `alreadyImported` (kept in memory only; the UI never passes a path). Returns `MechvibesImport` (`imported`, `replaced: true`). Rejects when nothing is waiting ("There is no import waiting to be replaced. Choose the pack again with Import Mechvibes pack…") and with the errors above. |
 
 ## Events
 
@@ -279,8 +313,11 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
   right after the user grants it) also shows `"denied"`, and is retried every 30 s; **(M4)**
   `onboarding.relaunchSuggested` is true meanwhile.
   `"unknown"` means the platform has no key listener, or the app runs with `TAKTAK_NO_INPUT=1`.
-  Windows and Linux have one since Milestone 5 (`"granted"`; `"denied"` on Linux Wayland while
-  the input devices are not readable, see `platform-notes.md`). **(M4)** The onboarding window is the full guide (see "Onboarding").
+  Windows and Linux have one since Milestone 5 (`"granted"`). **(M5)** `"denied"` there means
+  either that the Linux listener cannot read the keyboard devices (Wayland or
+  `TAKTAK_INPUT=evdev` without the `input` group: `onboarding.inputGroupNeeded`, see
+  `platform-notes.md`), or that the listener failed to start (`onboarding.relaunchSuggested`,
+  retried every 30 s). **(M4)** The onboarding window is the full guide (see "Onboarding").
 - Mute hotkey: a saved `muteHotkey` that cannot be registered at startup stays in the settings
   but sets `muteHotkeyError` (see `AppState`).
 - Privacy: no network access (CSP `default-src 'self'`; no remote URLs), no logging of keys,
@@ -302,11 +339,14 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
   it is transient and clears only on unlock.
 - **Why it is silent**, first match wins (the UI status line and the tray status item use this
   order; texts in "UI requirements"): sounds off → muted by hand → `screenLocked` →
-  `outputChanged` → no key listener and no permission step (`permission !== "granted" &&
-  !onboarding.permissionRequired`: `TAKTAK_NO_INPUT=1`, and Linux Wayland without access to
-  the input devices until it gets its own permission step; status `Key sounds unavailable`,
-  an info notice without buttons) → permission missing → audio fault → `ruleBlocked` → audio
-  starting.
+  `outputChanged` → no key listener and no permission prompt (`permission !== "granted" &&
+  !onboarding.permissionRequired`): **(M5)** with `inputGroupNeeded` status `Needs keyboard
+  access` and a warning notice "Keyboard access needed" with a Help button (the onboarding
+  window); with `relaunchSuggested` (Windows, Linux) status `Key listener stopped` and a
+  warning notice "TakTak needs to restart" with Quit & Reopen, in words that never mention
+  macOS or Input Monitoring; otherwise (`TAKTAK_NO_INPUT=1`) status `Key sounds unavailable`
+  and an info notice "Key sounds are turned off" without buttons → permission missing (macOS)
+  → audio fault → `ruleBlocked` → audio starting.
 
 ### Per-app rules (M4)
 
@@ -352,7 +392,11 @@ still there after the unlock.
 
 - Decision: `onboarding.offer = !settings.onboardingDone || (permissionRequired && permission
   === "denied")`. `permissionRequired` is true on macOS with the key listener on (false under
-  `TAKTAK_NO_INPUT=1`, and on Windows and Linux for now).
+  `TAKTAK_NO_INPUT=1`, and on Windows and Linux, which have no permission prompt). **(M5)** So on
+  Linux the welcome window explains the `input` group on the first launch, but does not open
+  again at every launch while the user has not joined it: joining is an opt-in with a security
+  cost, not something to nag about. The status line, the notice and the tray item still say
+  it, and each leads to the window.
 - At startup the app opens the onboarding window when `offer` is true **after the first
   permission check** (macOS), or right away where no permission is required. So it shows on the
   first launch, and on every launch where Input Monitoring is missing; it does not show again
@@ -394,6 +438,9 @@ still there after the unlock.
 - Lock, unlock and session changes are logged at debug level at most, without times kept.
 - Nothing new uses the network; the CSP stays as it is (`img-src 'self' data:` already allows the
   icons' `data:` URLs).
+- **(M5)** The Mechvibes import reports only pack contents (file and key names from the pack's
+  config) and logs only the new pack's id, the number of keys and the kind of a failure: never
+  the source path. The source of a pending overwrite is held in memory only.
 
 ## UI requirements (Milestone 4)
 
@@ -434,6 +481,45 @@ still there after the unlock.
   7. A closing button: "Done" once granted (or when `!permissionRequired`), "Later" otherwise;
      both call `finish_onboarding`.
 - **Settings → About** (or General): "Show welcome guide" (`open_onboarding`).
+
+## UI requirements (Milestone 5)
+
+- **"Fully offline", loud and clear.** The sentence "TakTak is fully offline — it never uses the
+  internet." appears, word for word (`src/lib/offline.ts`), in the onboarding window (a banner
+  right above the permission step or whatever card the window shows) and at the top of the
+  privacy box in Settings → About; the tray popover's footer shows the short form "Offline ·
+  never uses the internet" (the full sentence as its tooltip). The README and the website use
+  the same sentence. It must stay true: no network code (CSP `connect-src` limited to IPC, and
+  the CI offline guard, `npm run no-network`).
+- **Import Mechvibes pack** (Settings → Sounds → Your own packs, next to "Open packs folder"):
+  macOS shows one button, "Import Mechvibes pack…" (`kind: "any"`); Windows and Linux show
+  "Import Mechvibes pack…" (`"zip"`) and "Import pack folder…" (`"folder"`). The buttons are
+  disabled while an import runs. Next to them, the one-line note "Imported packs stay on this
+  Mac and are for your personal use only." ("this computer" on Windows and Linux).
+  - `imported`: a result row "Imported “<name>”" ("Replaced …" when `replaced`) with
+    "<n> keys mapped, <m> with their own release sound.", the format and source, the warnings
+    behind a disclosure ("<k> notes"), "Use this pack" (enabled once the pack is listed in
+    `packs`; it calls `set_pack`) and a dismiss button.
+  - `alreadyImported`: "“<name>” was imported before" (the listed pack's name, else the source)
+    with "Replace" (`overwrite_mechvibes_pack`) and "Cancel".
+  - Rejections show in the error toast. A cancelled picker (`null`) changes nothing.
+- **Personal packs.** A pack whose `license` is `LicenseRef-Personal` shows a "Personal" badge
+  (lock icon; tooltip: imported for personal use, stays on this computer, not for sharing) in
+  place of the SPDX badge on its card, and "Personal" instead of "User" in the popover's pack
+  list. The loader's warning that such a pack is personal-use-only is not listed among the
+  pack's `warnings` (the badge says it); other warnings are.
+- **Linux `input` group** (`onboarding.inputGroupNeeded`), in the onboarding window's place of
+  the permission step: why ("On Wayland, apps can’t hear keys typed into other apps, so TakTak
+  reads the keyboard devices directly…"), the command `sudo usermod -aG input $USER` with a Copy
+  button, "log out and back in", and the cost in a caution box ("…lets every program you run
+  read every keystroke, passwords included. TakTak only uses which key went down or up, and
+  never asks for root."), and that saying no only leaves key sounds off. Closing button "Done".
+- **Restart texts per platform.** macOS keeps "macOS needs TakTak to restart before it can
+  listen." (Input Monitoring is allowed). Windows and Linux (`relaunchSuggested` without
+  `permissionRequired`): "TakTak’s key listener couldn’t start. Quitting and reopening TakTak
+  usually fixes it; your settings are kept." with Quit & Reopen, in the onboarding window and
+  the notice; no troubleshooting about the macOS list, and no "TakTak reminds you the next time
+  it starts".
 
 ## Hotkey keys and keyboard layouts
 
@@ -477,6 +563,14 @@ not part of this contract yet.
   5 s for the old instance's lock instead of handing over) and, if the onboarding window was
   open, `--onboarding`; on Windows and Linux the running instance also holds
   `<app data dir>/running.lock` so the new one can wait for it.
+- **(M5)** The import: `src-tauri/src/mechvibes.rs` (the one-import-at-a-time slot, the
+  summary and error texts, the pending overwrite, the macOS `NSOpenPanel` that takes a folder or
+  a `.zip`, and on Windows and Linux the `tauri-plugin-dialog` pickers, used from Rust only: no
+  JS API and no capability), commands in `commands.rs`, over
+  `taktak_core::pack::import::import_mechvibes`. The personal-license warning is dropped in
+  `catalog::summarize`. UI: `src/views/settings/SoundsSection.svelte`, `src/lib/imports.ts`;
+  the offline sentence in `src/lib/offline.ts`; the Linux and Windows texts in
+  `src/lib/status.ts` and `onboarding.ts`; the tray texts in `tray.rs` (`status_on`).
 - **(M4)** UI: Settings → Apps is `src/views/settings/AppsSection.svelte` (with
   `src/components/AddAppPopover.svelte`), the welcome window `src/views/OnboardingView.svelte`;
   the pure helpers are `src/lib/rules.ts`, `onboarding.ts` and `status.ts`. The popover's
@@ -487,7 +581,10 @@ not part of this contract yet.
   bundled pack, drives the engine and the real service (pack switches, a preview opening and
   closing the output, a hot-reloaded user pack that breaks, is named as broken on a fresh
   start and is deleted, settings persistence) without windows, tray or keyboard listener,
-  prints one line per check and exits 0 when nothing failed.
+  prints one line per check and exits 0 when nothing failed. **(M5)** It also imports a
+  synthetic Mechvibes pack into its user packs folder (`mechvibes::import`, without the picker)
+  and checks that it is listed as a personal pack, then recognized as already imported and
+  replaced on overwrite.
   `TAKTAK_NO_INPUT=1 taktak` runs the app without the keyboard listener (no permission prompt);
   `TAKTAK_LOG=debug` raises the stderr log level.
 - TypeScript types: `src/lib/types.ts` (including a `Commands` map of every command's args and
@@ -502,7 +599,12 @@ not part of this contract yet.
   `relaunch` fixes it after 1.5 s), `rules` (mode "never" listing Slack and zoom.us, with Slack
   in front), `switching` (the frontmost app changes every 3 s), `locked` (screen locked, unlocks
   after 4 s), `outputchange` (`muteOnOutputChange` on; 3 s in, the output moves to AirPods Pro)
-  and `unsupported` (no per-app rules and no permission step, like Windows and Linux). The mock
+  and `unsupported` (no per-app rules and no permission step, like Windows and Linux).
+  **(M5)** `inputgroup` (Linux without the `input` group) and `listenerfail` (a Windows or Linux
+  listener that failed to start; `relaunch` fixes it after 1.5 s). The mock's
+  `import_mechvibes_pack` answers in turn: an import (the pack is listed 0.7 s later), the same
+  pack again (`alreadyImported`; `overwrite_mechvibes_pack` replaces it), a pack with no usable
+  sounds (rejected) and a cancelled picker (`null`). The mock
   lists ten realistic running apps (with SVG `data:` icons, one without an icon), and its
   `choose_app` returns Microsoft Word, Discord, Obsidian, then `null` (cancelled), in turn.
   `tauri build` output contains no mock code.

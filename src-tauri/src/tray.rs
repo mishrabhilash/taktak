@@ -50,6 +50,24 @@ pub struct Status {
 /// first reason that applies: screen locked, output changed, Input Monitoring missing, no sound
 /// output, a per-app rule.
 pub fn status(state: &AppState) -> Option<Status> {
+    status_on(state, cfg!(target_os = "macos"))
+}
+
+/// What the status item says while the key listener is missing (`permission` denied): on macOS
+/// Input Monitoring; on Linux the `input` group (M5); elsewhere a listener that failed to start
+/// and a restart may fix (M5). Each opens the onboarding window, which explains it.
+fn denied_text(state: &AppState, mac: bool) -> &'static str {
+    if mac {
+        "Needs Input Monitoring…"
+    } else if state.onboarding.input_group_needed {
+        "Needs keyboard access…"
+    } else {
+        "Key listener stopped…"
+    }
+}
+
+/// [`status`], with the platform (`mac`) as an argument so both kinds of text are tested.
+fn status_on(state: &AppState, mac: bool) -> Option<Status> {
     if !state.settings.enabled || state.muted {
         return None;
     }
@@ -57,7 +75,7 @@ pub fn status(state: &AppState) -> Option<Status> {
         Some(AutoMute::ScreenLocked) => ("Muted — screen locked".to_owned(), false),
         Some(AutoMute::OutputChanged) => ("Muted — output device changed".to_owned(), false),
         None if state.permission == Permission::Denied => {
-            ("Needs Input Monitoring…".to_owned(), true)
+            (denied_text(state, mac).to_owned(), true)
         }
         None if state.audio.state == AudioState::Fault => ("No sound output".to_owned(), false),
         None if state.rule_blocked => {
@@ -125,7 +143,8 @@ fn mnemonic_safe(text: &str) -> String {
 /// What a menu item does.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum MenuAction {
-    /// The status item (enabled only for "Needs Input Monitoring…"): opens the onboarding.
+    /// The status item (enabled only while the key listener is missing: "Needs Input Monitoring…"
+    /// and its Windows and Linux forms): opens the onboarding.
     Status,
     ToggleEnabled,
     ToggleMute,
@@ -447,9 +466,17 @@ mod tests {
         assert_eq!(status(&state).unwrap().text, "No sound output");
 
         state.permission = Permission::Denied;
-        let s = status(&state).unwrap();
+        let s = status_on(&state, true).unwrap();
         assert_eq!(s, Status { text: "Needs Input Monitoring…".into(), actionable: true });
         assert_eq!(tooltip(Some(&s)), "TakTak — Needs Input Monitoring");
+        // Windows and Linux: no Input Monitoring there (M5).
+        state.onboarding.relaunch_suggested = true;
+        assert_eq!(status_on(&state, false).unwrap().text, "Key listener stopped…");
+        state.onboarding.relaunch_suggested = false;
+        state.onboarding.input_group_needed = true;
+        let s = status_on(&state, false).unwrap();
+        assert_eq!(s, Status { text: "Needs keyboard access…".into(), actionable: true });
+        state.onboarding.input_group_needed = false;
 
         state.settings.mute_on_output_change = true;
         crate::automute::output_changed(&mut state);

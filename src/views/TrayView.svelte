@@ -19,6 +19,8 @@
     setMuted,
     setPack,
   } from '../lib/api';
+  import { isPersonal } from '../lib/imports';
+  import { OFFLINE, OFFLINE_SHORT } from '../lib/offline';
   import { platform } from '../lib/platform';
   import { requestSection } from '../lib/section';
   import { effectiveMuted, playbackStatus, playingName } from '../lib/status';
@@ -146,7 +148,11 @@
                 />
                 <span class="radio" aria-hidden="true"></span>
                 <span class="pack-name">{pack.name}</span>
-                {#if pack.origin === 'user'}<span class="badge">User</span>{/if}
+                {#if isPersonal(pack)}
+                  <span class="badge" title="Imported for personal use">Personal</span>
+                {:else if pack.origin === 'user'}
+                  <span class="badge">User</span>
+                {/if}
               </label>
               <PreviewButton id={pack.id} name={pack.name} />
             </div>
@@ -161,15 +167,20 @@
   {/if}
 
   <footer class="footer">
-    <button type="button" class="btn plain" onclick={() => run(openSettings())}>
-      <Icon name="sliders" />Settings…
-    </button>
-    <button type="button" class="btn plain" aria-label="Quit TakTak" onclick={() => run(quit())}>
-      <Icon name="power" />Quit
-    </button>
+    <p class="offline" title={OFFLINE}>
+      <Icon name="shield" size={12} /><span>{OFFLINE_SHORT}</span>
+    </p>
+    <div class="footer-buttons">
+      <button type="button" class="btn plain" onclick={() => run(openSettings())}>
+        <Icon name="sliders" />Settings…
+      </button>
+      <button type="button" class="btn plain" aria-label="Quit TakTak" onclick={() => run(quit())}>
+        <Icon name="power" />Quit
+      </button>
+    </div>
   </footer>
 
-  <Toast bottom={52} />
+  <Toast bottom={72} />
 </div>
 
 <style>
@@ -384,15 +395,37 @@
 
   .footer {
     display: flex;
-    justify-content: space-between;
-    gap: 8px;
-    padding: 8px;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 8px 8px;
     margin-top: 12px;
     border-top: 0.5px solid var(--separator);
   }
 
+  .footer-buttons {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
   .footer .btn {
     color: var(--text-2);
+  }
+
+  /* The offline promise, short form (src/lib/offline.ts). */
+  .offline {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    color: var(--text-2);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .offline span {
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .footer .btn:hover {

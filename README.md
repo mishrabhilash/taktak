@@ -12,7 +12,7 @@ speakers.
 *Demo GIF coming soon.*
 
 > [!IMPORTANT]
-> **TakTak is a fully offline app. It never uses the internet.**
+> **TakTak is fully offline — it never uses the internet.**
 >
 > - No network code at all: no accounts, no telemetry, no analytics, no crash reports, no
 >   update checks, no downloads. It works the same with Wi-Fi off, forever.
@@ -25,6 +25,8 @@ speakers.
 >
 > CI enforces this on every change: the build fails if a networking library, a network API or
 > an outside URL shows up in the app (see [CONTRIBUTING.md](CONTRIBUTING.md#privacy-rules)).
+> The app says the same, in the same words, in its welcome window, in Settings → About and at
+> the bottom of the tray popover.
 
 ## Why it needs keyboard access
 
@@ -80,22 +82,24 @@ on its own, and it stays silent in password fields and on the lock screen.
 
 **Windows: no permission prompt.** One limit set by Windows itself: TakTak can't hear keys
 typed into apps running *as administrator* (an elevated terminal, Task Manager, installers),
-unless TakTak were elevated too, which we don't recommend or offer. It is silent there.
+unless TakTak were elevated too, which we don't recommend or offer. It is silent there. Keys
+typed by on-screen keyboards and automation tools are ignored too.
 
 **Linux: X11 and Wayland differ.**
 - **X11**: no extra permission.
 - **Wayland** has no way for an app to hear keys typed into other apps, by design. The only
-  route is reading the keyboard device directly, which needs your user in the `input` group
-  (`sudo usermod -aG input "$USER"`, then log out and back in). Be aware that this lets *every*
-  program you run read every keystroke, which is why TakTak will only ever offer it as an
-  explicit opt-in and never asks for root.
+  route is reading the keyboard devices directly, which needs your user in the `input` group
+  (`sudo usermod -aG input $USER`, then log out and back in). Be aware that this lets *every*
+  program you run read every keystroke, which is why TakTak only explains it, as an explicit
+  opt-in, in its welcome window ("Needs keyboard access" until then), and never asks for root.
+  Without it, everything but the key sounds works.
 
 > [!NOTE]
-> **Platform status.** macOS is the first fully supported platform. On Windows and Linux,
-> TakTak runs, previews packs and keeps your settings, while the system-wide key listener for
-> those platforms is still being finished; until it lands, the app reports key sounds as
-> unavailable there. The permission notes above describe how it will behave. Details:
-> [docs/platform-notes.md](docs/platform-notes.md).
+> **Platform status.** macOS is the first fully supported and tested platform. Windows and
+> Linux have their system-wide key listeners now (a low-level keyboard hook on Windows; XInput2
+> on X11 and the input devices on Wayland on Linux), **implemented but not yet verified on real
+> hardware**: please report what you find. Per-app rules and the automatic mute on the lock
+> screen are macOS only for now. Details: [docs/platform-notes.md](docs/platform-notes.md).
 
 ## Bundled sound packs
 
@@ -141,15 +145,23 @@ pack keeps playing.
 
 Have packs from Mechvibes? TakTak can convert them to its own format, **for your personal
 use**. Most Mechvibes packs don't state a license for their sounds, so treat an imported pack
-as yours alone: TakTak's format marks such packs `LicenseRef-Personal`, which play normally on
-your machine but can never be bundled or shared.
+as yours alone: TakTak marks imported packs `LicenseRef-Personal`. They play normally on your
+machine and show a **Personal** badge, but stay there: they can never be bundled or shared.
 
-- **In the app**: import a Mechvibes pack folder or `.zip` from Settings. It is converted
-  into your user packs folder and shows up right away. The original is not changed.
-- **From the command line**: the `taktak-import-mechvibes` tool converts a Mechvibes pack
-  folder or `.zip` into a TakTak pack folder; `taktak-import-mechvibes --help` lists its
-  options. From a checkout of this repository: `cargo run --release --bin
-  taktak-import-mechvibes -- --help`.
+- **In the app**: **Settings → Sounds → Import Mechvibes pack…** (next to "Open packs
+  folder"). Choose the pack's folder (the one with `config.json`) or its `.zip`; on Windows and
+  Linux there is a separate "Import pack folder…" button. TakTak converts it into your user
+  packs folder, lists it within a second, and shows how many keys it mapped and any notes
+  (keys it skipped, missing files). Importing the same pack again offers to replace it. The
+  original is not changed.
+- **From the command line**: `taktak-import-mechvibes <folder-or-zip>... [--out DIR]
+  [--overwrite] [--no-split-release]` converts into the user packs folder by default (the
+  running app picks the packs up); `--help` lists the options. From a checkout of this
+  repository: `cargo run --release --bin taktak-import-mechvibes -- --help`.
+- **Supported formats**: Mechvibes v1 (a single sprite file or one file per key), Mechvibes v2
+  (with release sounds and fallbacks), MechvibesDX and Mechvibes++. Sounds may be WAV, Ogg
+  Vorbis or MP3. Mouse packs are not imported. Details:
+  [docs/pack-format.md](docs/pack-format.md#importing-mechvibes-packs).
 
 Like everything in TakTak, the import runs entirely on your machine.
 

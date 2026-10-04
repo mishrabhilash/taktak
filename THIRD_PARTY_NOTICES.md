@@ -7,7 +7,7 @@ carry their own licenses, listed in [`CREDITS.md`](CREDITS.md). This file lists 
 third-party software compiled into the TakTak app, with the license texts and notices
 those packages ship:
 
-- **428 Rust crates**: every crate the `taktak` binary depends on through normal
+- **431 Rust crates**: every crate the `taktak` binary depends on through normal
   dependencies on macOS (Apple silicon and Intel), Windows x64 or Linux x64 (from
   `Cargo.lock`, via `cargo metadata`). Each OS uses a subset of them.
   Build tools, build scripts and test-only dependencies are not part of the app and are not
@@ -288,6 +288,7 @@ given, and from crates.io or the npm registry at the exact version listed.
 | regex-automata | 0.4.18 | MIT OR Apache-2.0 | <https://github.com/rust-lang/regex> |
 | regex-lite | 0.1.9 | MIT OR Apache-2.0 | <https://github.com/rust-lang/regex> |
 | regex-syntax | 0.8.11 | MIT OR Apache-2.0 | <https://github.com/rust-lang/regex> |
+| rfd | 0.16.0 | MIT | <https://github.com/PolyMeilex/rfd> |
 | rtrb | 0.4.0 | MIT OR Apache-2.0 | <https://github.com/mgeier/rtrb> |
 | rubato | 5.0.1 | MIT OR Apache-2.0 | <https://github.com/HEnquist/rubato> |
 | rustc-hash | 2.1.3 | Apache-2.0 OR MIT | <https://github.com/rust-lang/rustc-hash> |
@@ -349,6 +350,8 @@ given, and from crates.io or the npm registry at the exact version listed.
 | tauri-codegen | 2.7.1 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/tauri> |
 | tauri-macros | 2.7.1 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/tauri> |
 | tauri-plugin-autostart | 2.7.0 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
+| tauri-plugin-dialog | 2.8.1 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
+| tauri-plugin-fs | 2.6.0 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
 | tauri-plugin-global-shortcut | 2.4.0 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
 | tauri-plugin-positioner | 2.4.0 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
 | tauri-plugin-single-instance | 2.5.2 | Apache-2.0 OR MIT | <https://github.com/tauri-apps/plugins-workspace> |
@@ -499,7 +502,7 @@ for other packages under them.
 
 ### Notice 1
 
-Used by: @tauri-apps/api 2.12.1, tauri 2.12.1, tauri-codegen 2.7.1, tauri-macros 2.7.1, tauri-plugin-autostart 2.7.0, tauri-plugin-global-shortcut 2.4.0, tauri-plugin-positioner 2.4.0, tauri-runtime 2.12.1, tauri-runtime-wry 2.12.1, tauri-utils 2.10.1. Shipped as `LICENSE-MIT`, `LICENSE_MIT`.
+Used by: @tauri-apps/api 2.12.1, tauri 2.12.1, tauri-codegen 2.7.1, tauri-macros 2.7.1, tauri-plugin-autostart 2.7.0, tauri-plugin-dialog 2.8.1, tauri-plugin-fs 2.6.0, tauri-plugin-global-shortcut 2.4.0, tauri-plugin-positioner 2.4.0, tauri-runtime 2.12.1, tauri-runtime-wry 2.12.1, tauri-utils 2.10.1. Shipped as `LICENSE-MIT`, `LICENSE_MIT`.
 
 ```text
 MIT License
@@ -6194,6 +6197,34 @@ Permission is granted to anyone to use this software for any purpose, including 
 
 ### Notice 125
 
+Used by: rfd 0.16.0. Shipped as `LICENSE`.
+
+```text
+MIT License
+
+Copyright (c) 2022 Bartłomiej Maryńczak
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+### Notice 126
+
 Used by: rubato 5.0.1. Shipped as `LICENSE-MIT`.
 
 ```text
@@ -6218,7 +6249,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 126
+### Notice 127
 
 Used by: rubato 5.0.1. Shipped as `LICENSE.txt`.
 
@@ -6231,7 +6262,7 @@ This project is dual-licensed under either of:
 You may choose either license, at your option.
 ```
 
-### Notice 127
+### Notice 128
 
 Used by: rustfft 6.4.1, strength_reduce 0.2.4. Shipped as `LICENSE-MIT`.
 
@@ -6257,7 +6288,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 128
+### Notice 129
 
 Used by: rustix 1.1.5. Shipped as `COPYRIGHT`.
 
@@ -6293,7 +6324,7 @@ is licensed under:
 at your option.
 ```
 
-### Notice 129
+### Notice 130
 
 Used by: same-file 1.0.6, winapi-util 0.1.11. Shipped as `LICENSE-MIT`.
 
@@ -6321,7 +6352,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 ```
 
-### Notice 130
+### Notice 131
 
 Used by: schemars 0.8.22, schemars 0.9.0, schemars 1.2.2, schemars_derive 0.8.22. Shipped as `LICENSE`.
 
@@ -6349,7 +6380,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 131
+### Notice 132
 
 Used by: scopeguard 1.2.0. Shipped as `LICENSE-MIT`.
 
@@ -6381,7 +6412,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 132
+### Notice 133
 
 Used by: serde_spanned 0.6.9, serde_spanned 1.1.1, toml 1.1.6+spec-1.1.0, toml_datetime 1.1.1+spec-1.1.0, toml_edit 0.19.15, toml_edit 0.20.2, toml_edit 0.25.15+spec-1.1.0, toml_parser 1.1.3+spec-1.1.0, toml_writer 1.1.2+spec-1.1.0. Shipped as `LICENSE-MIT`.
 
@@ -6407,7 +6438,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 133
+### Notice 134
 
 Used by: serialize-to-javascript 0.1.2, serialize-to-javascript-impl 0.1.2. Shipped as `LICENSE-MIT`.
 
@@ -6435,7 +6466,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 134
+### Notice 135
 
 Used by: sha2 0.10.9. Shipped as `LICENSE-MIT`.
 
@@ -6469,7 +6500,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 135
+### Notice 136
 
 Used by: signal-hook-registry 1.4.8. Shipped as `LICENSE-MIT`.
 
@@ -6501,7 +6532,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 136
+### Notice 137
 
 Used by: simd-adler32 0.3.10. Shipped as `LICENSE.md`.
 
@@ -6529,7 +6560,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 137
+### Notice 138
 
 Used by: siphasher 1.0.4. Shipped as `COPYING`.
 
@@ -6543,7 +6574,7 @@ http://www.apache.org/licenses/LICENSE-2.0> or the MIT license
 option.
 ```
 
-### Notice 138
+### Notice 139
 
 Used by: slab 0.4.12. Shipped as `LICENSE`.
 
@@ -6575,7 +6606,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 139
+### Notice 140
 
 Used by: smallvec 1.16.2. Shipped as `LICENSE-MIT`.
 
@@ -6607,7 +6638,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 140
+### Notice 141
 
 Used by: smappservice-rs 0.1.3. Shipped as `LICENSE.md`.
 
@@ -6635,7 +6666,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 141
+### Notice 142
 
 Used by: softbuffer 0.4.8. Shipped as `LICENSE-MIT`.
 
@@ -6661,7 +6692,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 142
+### Notice 143
 
 Used by: stable_deref_trait 1.2.1. Shipped as `LICENSE-MIT`.
 
@@ -6693,7 +6724,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 143
+### Notice 144
 
 Used by: strsim 0.11.1. Shipped as `LICENSE`.
 
@@ -6723,7 +6754,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 144
+### Notice 145
 
 Used by: svelte 5.57.1. Shipped as `LICENSE.md`.
 
@@ -6737,7 +6768,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 145
+### Notice 146
 
 Used by: swift-rs 1.0.8. Shipped as `LICENSE-MIT`.
 
@@ -6763,7 +6794,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 146
+### Notice 147
 
 Used by: synstructure 0.14.0. Shipped as `LICENSE`.
 
@@ -6777,7 +6808,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 147
+### Notice 148
 
 Used by: tao 0.37.1. Shipped as `LICENSE.spdx`.
 
@@ -6802,9 +6833,9 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tao.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice 148
+### Notice 149
 
-Used by: tauri-plugin-autostart 2.7.0, tauri-plugin-global-shortcut 2.4.0, tauri-plugin-positioner 2.4.0, tauri-plugin-single-instance 2.5.2. Shipped as `LICENSE.spdx`.
+Used by: tauri-plugin-autostart 2.7.0, tauri-plugin-dialog 2.8.1, tauri-plugin-fs 2.6.0, tauri-plugin-global-shortcut 2.4.0, tauri-plugin-positioner 2.4.0, tauri-plugin-single-instance 2.5.2. Shipped as `LICENSE.spdx`.
 
 ```text
 SPDXVersion: SPDX-2.1
@@ -6829,7 +6860,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tauri.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice 149
+### Notice 150
 
 Used by: tauri-plugin-single-instance 2.5.2. Shipped as `LICENSE_MIT`.
 
@@ -6857,7 +6888,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 150
+### Notice 151
 
 Used by: tempfile 3.27.0. Shipped as `LICENSE-MIT`.
 
@@ -6889,7 +6920,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 151
+### Notice 152
 
 Used by: tendril 0.5.1. Shipped as `LICENSE-MIT`.
 
@@ -6921,7 +6952,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 152
+### Notice 153
 
 Used by: time 0.3.55, time-core 0.1.9, time-macros 0.2.32. Shipped as `LICENSE-MIT`.
 
@@ -6947,7 +6978,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 153
+### Notice 154
 
 Used by: tokio 1.53.1. Shipped as `LICENSE`.
 
@@ -6975,7 +7006,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 154
+### Notice 155
 
 Used by: tracing 0.1.44, tracing-attributes 0.1.31, tracing-core 0.1.36. Shipped as `LICENSE`.
 
@@ -7007,7 +7038,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 155
+### Notice 156
 
 Used by: transpose 0.2.3. Shipped as `LICENSE-MIT`.
 
@@ -7039,7 +7070,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 156
+### Notice 157
 
 Used by: tray-icon 0.25.1. Shipped as `LICENSE.spdx`.
 
@@ -7065,7 +7096,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/tray-icon.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice 157
+### Notice 158
 
 Used by: typenum 1.20.1. Shipped as `LICENSE`.
 
@@ -7073,7 +7104,7 @@ Used by: typenum 1.20.1. Shipped as `LICENSE`.
 MIT OR Apache-2.0
 ```
 
-### Notice 158
+### Notice 159
 
 Used by: typenum 1.20.1. Shipped as `LICENSE-MIT`.
 
@@ -7101,7 +7132,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 159
+### Notice 160
 
 Used by: uds_windows 1.2.1. Shipped as `LICENSE`.
 
@@ -7129,7 +7160,7 @@ Used by: uds_windows 1.2.1. Shipped as `LICENSE`.
     SOFTWARE
 ```
 
-### Notice 160
+### Notice 161
 
 Used by: unicode-ident 1.0.26. Shipped as `LICENSE-UNICODE`.
 
@@ -7175,7 +7206,7 @@ dealings in these Data Files or Software without prior written
 authorization of the copyright holder.
 ```
 
-### Notice 161
+### Notice 162
 
 Used by: urlpattern 0.6.0. Shipped as `LICENSE`.
 
@@ -7203,7 +7234,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 162
+### Notice 163
 
 Used by: utf8_iter 1.0.4. Shipped as `COPYRIGHT`.
 
@@ -7252,7 +7283,7 @@ licensed under the Apache License, Version 2.0 <LICENSE-APACHE> or
 <LICENSE-MIT> or <http://opensource.org/licenses/MIT>, at your option.
 ```
 
-### Notice 163
+### Notice 164
 
 Used by: utf8_iter 1.0.4. Shipped as `LICENSE-MIT`.
 
@@ -7284,7 +7315,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 164
+### Notice 165
 
 Used by: uuid 1.27.0. Shipped as `LICENSE-MIT`.
 
@@ -7317,7 +7348,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 165
+### Notice 166
 
 Used by: visibility 0.1.1. Shipped as `LICENSE`.
 
@@ -7325,7 +7356,7 @@ Used by: visibility 0.1.1. Shipped as `LICENSE`.
 No license.
 ```
 
-### Notice 166
+### Notice 167
 
 Used by: visibility 0.1.1. Shipped as `LICENSE-MIT`.
 
@@ -7353,7 +7384,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 167
+### Notice 168
 
 Used by: visibility 0.1.1. Shipped as `LICENSE-ZLIB`.
 
@@ -7379,7 +7410,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### Notice 168
+### Notice 169
 
 Used by: web-time 1.1.0. Shipped as `LICENSE-MIT`.
 
@@ -7407,7 +7438,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 169
+### Notice 170
 
 Used by: webkit2gtk 2.0.2. Shipped as `LICENSE`.
 
@@ -7434,7 +7465,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 170
+### Notice 171
 
 Used by: webkit2gtk-sys 2.0.2. Shipped as `LICENSE`.
 
@@ -7459,7 +7490,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 171
+### Notice 172
 
 Used by: winapi 0.3.9. Shipped as `LICENSE-MIT`.
 
@@ -7485,7 +7516,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 172
+### Notice 173
 
 Used by: window-vibrancy 0.8.1. Shipped as `LICENSE-MIT`.
 
@@ -7513,7 +7544,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 173
+### Notice 174
 
 Used by: window-vibrancy 0.8.1. Shipped as `LICENSE.spdx`.
 
@@ -7539,7 +7570,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/window-vibrancy.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice 174
+### Notice 175
 
 Used by: windowfunctions 0.1.1. Shipped as `LICENSE.txt`.
 
@@ -7565,7 +7596,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 175
+### Notice 176
 
 Used by: windows 0.62.2, windows-collections 0.3.2, windows-core 0.62.2, windows-future 0.3.2, windows-implement 0.60.2, windows-interface 0.59.3, windows-link 0.2.1, windows-numerics 0.3.1, windows-registry 0.6.1, windows-result 0.4.1, windows-strings 0.5.1, windows-sys 0.59.0, windows-sys 0.60.2, windows-sys 0.61.2, windows-targets 0.52.6, windows-targets 0.53.5, windows-threading 0.2.1, windows-version 0.1.7, windows_x86_64_gnu 0.52.6, windows_x86_64_gnu 0.53.1, windows_x86_64_msvc 0.52.6, windows_x86_64_msvc 0.53.1. Shipped as `license-mit`.
 
@@ -7593,7 +7624,7 @@ Used by: windows 0.62.2, windows-collections 0.3.2, windows-core 0.62.2, windows
     SOFTWARE
 ```
 
-### Notice 176
+### Notice 177
 
 Used by: wry 0.57.0. Shipped as `LICENSE-MIT`.
 
@@ -7621,7 +7652,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 177
+### Notice 178
 
 Used by: wry 0.57.0. Shipped as `LICENSE.spdx`.
 
@@ -7648,7 +7679,7 @@ PackageDownloadLocation: git+ssh://github.com/tauri-apps/wry.git
 Creator: Person: Daniel Thompson-Yvetot
 ```
 
-### Notice 178
+### Notice 179
 
 Used by: x11rb 0.13.2, x11rb-protocol 0.13.2. Shipped as `LICENSE-MIT`.
 
@@ -7680,7 +7711,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 179
+### Notice 180
 
 Used by: xkeysym 0.2.1. Shipped as `LICENSE-MIT`.
 
@@ -7706,7 +7737,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 180
+### Notice 181
 
 Used by: xkeysym 0.2.1. Shipped as `LICENSE-ZLIB`.
 
@@ -7724,7 +7755,7 @@ Permission is granted to anyone to use this software for any purpose, including 
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### Notice 181
+### Notice 182
 
 Used by: zbus 5.19.0, zbus_macros 5.19.0, zbus_names 4.3.4, zvariant 5.15.0, zvariant_derive 5.15.0. Shipped as `LICENSE`.
 
@@ -7756,7 +7787,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 182
+### Notice 183
 
 Used by: zcheapstr 1.1.0. Shipped as `LICENSE`.
 
@@ -7788,7 +7819,7 @@ IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 ```
 
-### Notice 183
+### Notice 184
 
 Used by: zip 8.6.0. Shipped as `LICENSE`.
 
@@ -7816,7 +7847,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
-### Notice 184
+### Notice 185
 
 Used by: zlib-rs 0.6.8. Shipped as `LICENSE`.
 
@@ -7842,7 +7873,7 @@ freely, subject to the following restrictions:
 3. This notice may not be removed or altered from any source distribution.
 ```
 
-### Notice 185
+### Notice 186
 
 Used by: zopfli 0.8.3. Shipped as `COPYING`.
 

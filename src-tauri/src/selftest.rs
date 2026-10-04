@@ -6,9 +6,11 @@
 //! migration (in a temporary folder), then runs the real [`Service`] (control thread, loader,
 //! registry watcher) through pack switches, a preview that opens and closes the output (closed
 //! otherwise: nothing can play without a listener), a saved selection of a pack TakTak no longer
-//! bundles (moved to the default pack), and a hot-reloaded user pack that breaks
-//! (and is named as broken by a freshly started service) and is deleted. Prints one line per
-//! check with its timing; exit code 0 when nothing failed.
+//! bundles (moved to the default pack), a hot-reloaded user pack that breaks
+//! (and is named as broken by a freshly started service) and is deleted, and a synthetic
+//! Mechvibes pack imported into the user packs folder (listed as a personal pack, then
+//! recognized as already imported and replaced). Prints one line per check with its timing;
+//! exit code 0 when nothing failed.
 //!
 //! `--allow-no-audio` turns "no output device" into skipped playback checks instead of a
 //! failure (for machines without audio hardware).
@@ -17,12 +19,13 @@ use crate::automute::{self, Event};
 use crate::catalog;
 use crate::input;
 use crate::loader;
+use crate::mechvibes;
 use crate::rules;
 use crate::service::{Config, NO_OUTPUT, Service, Shared};
 use crate::settings::{self, Persister};
 use crate::state::{
     AppRef, AppRule, AppRuleEntry, AppRuleMode, AppState, AudioState, AutoMute, DEFAULT_PACK_ID,
-    PackOrigin, Permission, RETIRED_PACK_IDS, Settings, VariantMode,
+    MechvibesImport, PackOrigin, Permission, RETIRED_PACK_IDS, Settings, VariantMode,
 };
 use crate::windows;
 use std::fmt::Write as _;
@@ -36,6 +39,7 @@ use std::time::{Duration, Instant};
 use taktak_core::audio::{Engine, EngineConfig, SoundBank};
 use taktak_core::input::{KeyAction, KeyEvent};
 use taktak_core::key::Key;
+use taktak_core::pack::manifest::PERSONAL_LICENSE;
 use taktak_core::pack::{PackInfo, PackRegistry};
 
 /// How long a service check waits for the state it expects.
@@ -743,6 +747,10 @@ fn service_checks(
 
     hot_reload_checks(report, &service, bundled, packs, &user_dir, scratch, playback);
 
+    report.check("service: imported Mechvibes pack is listed as personal", || {
+        mechvibes_import(&service, &user_dir, scratch)
+    });
+
     report.check("service: settings saved on shutdown", || {
         service.update(|s| s.settings.humanize = 0.5);
         service.shutdown(Duration::from_secs(3));
@@ -950,6 +958,92 @@ fn hot_reload_checks(
         }
         Ok(((), state.active_pack_error.unwrap_or_default()))
     });
+}
+
+/// A synthetic click, as a 16-bit mono WAV file: `frames` samples of decaying noise at `rate`.
+pub fn click_wav(rate: u32, frames: u32) -> Vec<u8> {
+    let data_len = frames * 2;
+    let mut out = Vec::with_capacity(44 + data_len as usize);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data_len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    out.extend_from_slice(&1u16.to_le_bytes()); // mono
+    out.extend_from_slice(&rate.to_le_bytes());
+    out.extend_from_slice(&(rate * 2).to_le_bytes());
+    out.extend_from_slice(&2u16.to_le_bytes());
+    out.extend_from_slice(&16u16.to_le_bytes());
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_len.to_le_bytes());
+    let mut seed: u32 = 0x9e37_79b9;
+    for i in 0..frames {
+        seed ^= seed << 13;
+        seed ^= seed >> 17;
+        seed ^= seed << 5;
+        let noise = (seed as f32 / u32::MAX as f32) * 2.0 - 1.0;
+        let envelope = (-(i as f32) / (rate as f32 * 0.004)).exp();
+        out.extend_from_slice(&((noise * envelope * 20_000.0) as i16).to_le_bytes());
+    }
+    out
+}
+
+/// "Import Mechvibes pack…" end to end, without the picker: a synthetic Mechvibes pack is
+/// imported into the service's user packs folder, hot reload lists it as a personal pack (whose
+/// license note the UI's badge replaces), a second import is recognized, and an overwrite replaces it.
+fn mechvibes_import(
+    service: &Service,
+    user_dir: &Path,
+    scratch: &Path,
+) -> Result<((), String), String> {
+    const ID: &str = "mv-self-test-mechvibes";
+    let src = scratch.join("mechvibes").join("Self-test Mechvibes");
+    fs::create_dir_all(&src).map_err(|e| e.to_string())?;
+    fs::write(
+        src.join("config.json"),
+        r#"{"name": "Self-test Mechvibes", "key_define_type": "multi", "defines": {"30": "a.wav", "57": "space.wav"}}"#,
+    )
+    .map_err(|e| e.to_string())?;
+    fs::write(src.join("a.wav"), click_wav(44_100, 2_000)).map_err(|e| e.to_string())?;
+    fs::write(src.join("space.wav"), click_wav(44_100, 3_000)).map_err(|e| e.to_string())?;
+
+    let started = Instant::now();
+    let pack = match mechvibes::import(&src, user_dir, false)? {
+        MechvibesImport::Imported { pack } => pack,
+        other => return Err(format!("first import: {other:?}")),
+    };
+    if pack.id != ID || pack.keys_mapped != 2 {
+        return Err(format!("imported {pack:?}"));
+    }
+    let listed = wait_for(WAIT, || {
+        service.snapshot().packs.iter().any(|p| {
+            p.id == ID
+                && p.origin == PackOrigin::User
+                && p.license == PERSONAL_LICENSE
+                && !p.warnings.iter().any(|w| w.starts_with("license"))
+        })
+    });
+    if !listed {
+        let found = service.snapshot().packs.into_iter().find(|p| p.id == ID);
+        return Err(format!(
+            "never listed as a personal pack without a license warning: {found:?}"
+        ));
+    }
+    let listed_after = started.elapsed();
+    match mechvibes::import(&src, user_dir, false)? {
+        MechvibesImport::AlreadyImported { id, .. } if id == ID => {}
+        other => return Err(format!("second import: {other:?}")),
+    }
+    let again = mechvibes::take_pending().ok_or("the overwrite has no source")?;
+    match mechvibes::import(&again, user_dir, true)? {
+        MechvibesImport::Imported { pack } if pack.replaced => {}
+        other => return Err(format!("overwrite: {other:?}")),
+    }
+    fs::remove_dir_all(user_dir.join(ID)).map_err(|e| e.to_string())?;
+    if !wait_for(WAIT, || !service.snapshot().packs.iter().any(|p| p.id == ID)) {
+        return Err("the imported pack was not removed from the list".into());
+    }
+    Ok(((), format!("2 keys, listed after {}, replaced on overwrite", ms(listed_after))))
 }
 
 fn copy_dir(from: &Path, to: &Path) -> io::Result<()> {

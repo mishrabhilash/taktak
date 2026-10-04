@@ -1,6 +1,8 @@
 <script lang="ts">
   // One pack in the settings grid: a radio (the whole card) plus a separate ▶ preview button.
   import { plural } from '../lib/format';
+  import { isPersonal, personalBadgeTitle } from '../lib/imports';
+  import { platform } from '../lib/platform';
   import type { PackSummary } from '../lib/types';
   import Icon from './Icon.svelte';
   import PreviewButton from './PreviewButton.svelte';
@@ -42,7 +44,14 @@
       {#if error}
         <span class="badge error" title={error}><Icon name="error" size={11} />Not loaded</span>
       {/if}
-      <span class="badge accent" title="License (SPDX)">{pack.license}</span>
+      {#if isPersonal(pack)}
+        <!-- Imported (Mechvibes): LicenseRef-Personal, explained instead of shown as SPDX. -->
+        <span class="badge accent" title={personalBadgeTitle(platform)}>
+          <Icon name="lock" size={10} />Personal
+        </span>
+      {:else}
+        <span class="badge accent" title="License (SPDX)">{pack.license}</span>
+      {/if}
       {#if pack.origin === 'user'}
         <span class="badge" title="From your packs folder">User</span>
       {:else}

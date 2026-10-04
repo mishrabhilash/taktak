@@ -65,8 +65,16 @@ X11 → evdev fallback, the `PermissionDenied` path and evdev hotplug.
   for good. The callback must do what the macOS tap does: check one atomic, push into the
   wait-free ring and return, never block, allocate or log (well under 1 ms). A removed hook
   cannot be detected from inside the process (`Listener::take_reenabled` is always 0), so
-  re-installing it (dropping and restarting the `Listener`) on session unlock and on resume
-  from sleep is the practical guard; the app does not do that yet.
+  re-installing it on session unlock and on resume from sleep is the practical guard.
+  **Implemented** (Milestone 5), event-driven: the `taktak-input` thread owns a hidden, never
+  shown tool window registered with `WTSRegisterSessionNotification(NOTIFY_FOR_THIS_SESSION)`.
+  `WM_WTSSESSION_CHANGE` with `WTS_SESSION_UNLOCK`, `WTS_CONSOLE_CONNECT` or
+  `WTS_REMOTE_CONNECT`, and the `WM_POWERBROADCAST` resume events (`PBT_APMRESUMEAUTOMATIC`,
+  `PBT_APMRESUMESUSPEND`, broadcast to every top-level window) post a message to the thread,
+  whose loop then unhooks, forgets held keys and calls `SetWindowsHookExW` again. No polling
+  and no app involvement. Known limit: a hook Windows removes at any other time (a stall
+  while the session stays unlocked and awake) stays gone until the next unlock, resume or
+  restart of the listener (muting and unmuting, or turning sounds off and on, restarts it).
 - **Injected keys: ignored** (`keymap_windows::PLAY_INJECTED` is false). Events with
   `LLKHF_INJECTED` come from on-screen keyboards, remote-desktop and automation tools
   (AutoHotkey, macro software) and apps that type for the user. Ignoring them keeps TakTak to
@@ -169,10 +177,16 @@ X11 → evdev fallback, the `PermissionDenied` path and evdev hotplug.
   (the evdev and libinput drivers, XWayland: every current setup); the long-obsolete `kbd`
   driver's key codes would map wrongly. `KEY_FN` (464) only arrives through evdev (X11 key
   codes stop at 255), and Lang3/Lang4 (Katakana/Hiragana) and Zenkaku/Hankaku have no `Key`.
-- **App side, still to do:** the app treats `permissionRequired` as macOS-only, so a Wayland
-  user without the `input` group sees "Key sounds unavailable" and no explanation; the
-  onboarding needs a Linux step with the opt-in text from this page, driven by
-  `InputError::PermissionDenied` / `has_permission`.
+- **App side (implemented, Milestone 5):** `permissionRequired` stays macOS-only, but the app
+  sets `onboarding.inputGroupNeeded` when `has_permission` reports the devices unreadable, or
+  the listener was refused (`InputError::PermissionDenied`: X11 failed and the evdev fallback
+  could not open the devices). The welcome window then shows a Linux step: why the devices
+  are read directly, `sudo usermod -aG input $USER` with a Copy button, log out and back in,
+  and the cost (every program the user runs can read every keystroke). The status reads "Needs
+  keyboard access" (not "Key sounds unavailable"), with a notice and a tray item that open the
+  window. It opens by itself only on the first launch, so declining the opt-in is not nagged
+  about, and TakTak never asks for root. No restart is suggested in that state (it would not
+  help).
 - **Per-app rules (future):** X11: `_NET_ACTIVE_WINDOW` on the root window (a `PropertyNotify`
   event, no polling) → `WM_CLASS` of that window (the `id`), `_NET_WM_NAME` as the name.
   Wayland: no generic API; only compositor-specific ones (Sway and Hyprland IPC, a GNOME Shell
@@ -217,6 +231,6 @@ X11 → evdev fallback, the `PermissionDenied` path and evdev hotplug.
 | | Permission step | What to tell the user |
 |---|---|---|
 | macOS | Input Monitoring (onboarding window) | Already implemented. |
-| Windows | none (`has_permission` is always true) | "TakTak can't hear keys in apps running as administrator." Keys from on-screen keyboards and automation tools are silent (injected events are ignored). |
-| Linux X11 | none (XInput2) | Nothing special. |
-| Linux Wayland | opt-in `input` group (evdev; `InputError::PermissionDenied` until then) | What the group allows (every keystroke, for every program), how to join it, and that a log out is needed. Not yet shown by the app. |
+| Windows | none (`has_permission` is always true) | "TakTak can't hear keys in apps running as administrator." Keys from on-screen keyboards and automation tools are silent (injected events are ignored). A listener that fails to start: "Key listener stopped", Quit & Reopen (no macOS wording). |
+| Linux X11 | none (XInput2) | Nothing special. A listener that fails to start: as Windows. |
+| Linux Wayland | opt-in `input` group (evdev; `InputError::PermissionDenied` until then) | What the group allows (every keystroke, for every program), how to join it, and that a log out is needed. Shown by the app since Milestone 5 (`onboarding.inputGroupNeeded`). |
