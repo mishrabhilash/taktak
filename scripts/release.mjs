@@ -3,6 +3,9 @@
 //
 //   npm run release [-- <tauri build options>]   e.g. npm run release -- --bundles app
 //   npm run release -- --check [<binary>…]      only check binaries (default: the release one)
+//   node scripts/release.mjs build [<options>]  the same as without `build`, so CI's
+//                                               tauri-action can use this as its tauriScript
+//   node scripts/release.mjs <other command>    any other tauri command, passed through
 //
 // Compiled-in panic locations name source files by absolute path, including every dependency
 // under ~/.cargo/registry, so a plain `tauri build` ships the builder's home directory (and
@@ -88,13 +91,20 @@ function check(files) {
   return clean;
 }
 
-const args = process.argv.slice(2);
+const cli = path.join(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
+let args = process.argv.slice(2);
 if (args[0] === '--check') {
   const files = args.length > 1 ? args.slice(1).map((f) => path.resolve(f)) : [builtBinary([])];
   process.exit(check(files) ? 0 : 1);
 }
+if (args[0] === 'build') {
+  args = args.slice(1);
+} else if (args.length > 0 && (!args[0].startsWith('-') || ['-V', '--version'].includes(args[0]))) {
+  // `tauri info`, `tauri --version`, …: tools that drive the Tauri CLI through this script.
+  const passthrough = spawnSync(process.execPath, [cli, ...args], { cwd: root, stdio: 'inherit' });
+  process.exit(passthrough.status ?? 1);
+}
 
-const cli = path.join(root, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
 const build = spawnSync(process.execPath, [cli, 'build', ...args], {
   cwd: root,
   env: buildEnv(),

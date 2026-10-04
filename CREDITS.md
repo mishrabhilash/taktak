@@ -196,12 +196,14 @@ packs; they are no longer bundled, and their experimental generator,
 
 ## Third-party code
 
-TakTak's Rust code uses third-party crates (for example `cpal`, `symphonia`, `rubato`, `rtrb`,
-`notify`, `serde` and `zip`), each under its own license, mostly MIT and/or Apache-2.0. The
-exact set and versions are pinned in [`Cargo.lock`](Cargo.lock). A complete list of crate
-licenses and notices, generated from `cargo metadata`, will be added in a later milestone and
-shipped with the app. Until then, `cargo metadata --format-version 1` lists every crate with its
-license field.
+TakTak's Rust code uses third-party crates (for example `tauri`, `cpal`, `symphonia`,
+`rubato`, `rtrb`, `notify`, `serde` and `zip`), and its user interface bundles `svelte` and
+`@tauri-apps/api`, each under its own license, mostly MIT and/or Apache-2.0. Every one of
+them, with its version, license and the license texts and notices it ships, is listed in
+[`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md), which is shipped inside the app next to
+this file. It is generated offline from `Cargo.lock` (`cargo metadata`) and the UI's
+production build by `npm run notices` ([`scripts/notices.mjs`](scripts/notices.mjs)), and CI
+checks that it is current.
 
 The pack-source build scripts use Python, numpy and ffmpeg on the developer's machine only;
 none of them is part of the app.

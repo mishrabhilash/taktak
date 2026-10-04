@@ -212,7 +212,10 @@ new one is swapped in.
 - Hooks read key codes and down/up only. No layout/character APIs are called
   (on macOS: no `CGEventKeyboardGetUnicodeString`, no TIS calls).
 - `Key`'s `Debug` prints `Key(<redacted>)`, so key identities cannot leak into logs by accident.
-- No networking code or networking crates.
+- No networking code or networking crates. CI enforces it (`npm run no-network`,
+  `scripts/no-network.mjs`): no networking crate in any desktop dependency tree, no `std::net`
+  or `fetch`/`WebSocket` in our sources, a `connect-src` limited to Tauri's IPC, and no outside
+  URLs in the UI bundle beyond namespaces and docs/license links.
 - Per-app rules (Milestone 4) see only the frontmost app's bundle id and name, keep only the
   current value in `AppState`, and never log it. Only the user's rule list is persisted.
 

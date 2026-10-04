@@ -60,6 +60,7 @@
     "resources": {
       "../packs": "packs",
       "../CREDITS.md": "CREDITS.md",
+      "../THIRD_PARTY_NOTICES.md": "THIRD_PARTY_NOTICES.md",
       "../LICENSE": "LICENSE"
     },
     "macOS": {
