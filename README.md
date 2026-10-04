@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/mishrabhilash/taktak/releases/latest"><b>Download</b></a> ·
+  <a href="https://github.com/mishrabhilash/taktak/releases"><b>Download</b></a> ·
   <a href="https://mishrabhilash.github.io/taktak/"><b>Website</b></a> (<a href="https://taktak.tech">taktak.tech</a>, hear every pack there) ·
   <a href="#bundled-sound-packs">Sound packs</a> ·
   <a href="#add-your-own-pack">Make your own</a>
@@ -98,7 +98,7 @@ Monitoring**. You can revoke it at any time; TakTak just goes quiet.
 
 ## Install
 
-Download the latest version from **[GitHub Releases](https://github.com/mishrabhilash/taktak/releases/latest)**.
+Download the latest version from **[GitHub Releases](https://github.com/mishrabhilash/taktak/releases)**.
 Each release lists `SHA256SUMS.txt` to verify your download.
 
 | OS | File | Notes |
