@@ -3,6 +3,7 @@
 //! The format is specified in `docs/pack-format.md`; this module is its implementation.
 
 pub mod decode;
+pub mod import;
 pub mod load;
 pub mod manifest;
 pub mod registry;

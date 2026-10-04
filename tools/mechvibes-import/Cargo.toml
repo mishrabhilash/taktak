@@ -1,0 +1,17 @@
+[package]
+name = "mechvibes-import"
+description = "Imports Mechvibes / MechvibesDX sound packs into TakTak packs (personal use)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "taktak-import-mechvibes"
+path = "src/main.rs"
+
+[dependencies]
+taktak-core = { path = "../../src-tauri/core" }
+
+[dev-dependencies]
+tempfile = "3.27.0"
