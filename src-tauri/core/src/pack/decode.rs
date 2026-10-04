@@ -56,6 +56,17 @@ impl Pcm {
 /// `"mp3"`), used as a format hint. Multichannel audio is averaged to mono. Errors are
 /// human-readable ("not a valid Ogg Vorbis file: …").
 pub fn decode(bytes: Vec<u8>, extension: &str) -> Result<Pcm, String> {
+    decode_with(bytes, extension, None)
+}
+
+/// [`decode`] for long source files that are cut up before use (the sprite sheets of imported
+/// packs): decoding stops with an error once the file is longer than `max_seconds`, instead of
+/// a little over [`MAX_SAMPLE_SECONDS`].
+pub fn decode_long(bytes: Vec<u8>, extension: &str, max_seconds: f32) -> Result<Pcm, String> {
+    decode_with(bytes, extension, Some(max_seconds))
+}
+
+fn decode_with(bytes: Vec<u8>, extension: &str, long: Option<f32>) -> Result<Pcm, String> {
     let kind = format_name(extension);
     let invalid = |detail: String| format!("not a valid {kind} file: {detail}");
     if bytes.is_empty() {
@@ -145,11 +156,15 @@ pub fn decode(bytes: Vec<u8>, extension: &str) -> Result<Pcm, String> {
         } else if rate != sample_rate {
             return Err(invalid("the sample rate changes within the file".into()));
         }
-        if mono.len() + buf.frames() > max_decoded_samples(sample_rate) {
-            return Err(format!(
-                "sound is over {MAX_DECODE_SECONDS:.2} s long; sounds must be at most \
-                 {MAX_SAMPLE_SECONDS} s"
-            ));
+        let limit = long.unwrap_or(MAX_DECODE_SECONDS);
+        if mono.len() + buf.frames() > max_decoded_samples(sample_rate, limit) {
+            return Err(match long {
+                None => format!(
+                    "sound is over {MAX_DECODE_SECONDS:.2} s long; sounds must be at most \
+                     {MAX_SAMPLE_SECONDS} s"
+                ),
+                Some(limit) => format!("audio file is over {limit:.0} s long"),
+            });
         }
         buf.copy_to_vec_interleaved(&mut interleaved);
         let scale = 1.0 / channels as f32;
@@ -170,9 +185,10 @@ pub fn decode(bytes: Vec<u8>, extension: &str) -> Result<Pcm, String> {
     Ok(Pcm { sample_rate, samples: mono })
 }
 
-/// Samples of [`MAX_DECODE_SECONDS`] at `sample_rate` (at most 4 M, at the highest rate).
-fn max_decoded_samples(sample_rate: u32) -> usize {
-    (f64::from(MAX_DECODE_SECONDS) * f64::from(sample_rate)) as usize
+/// Samples of `seconds` at `sample_rate` (for [`MAX_DECODE_SECONDS`], at most 4 M, at the
+/// highest rate).
+fn max_decoded_samples(sample_rate: u32, seconds: f32) -> usize {
+    (f64::from(seconds) * f64::from(sample_rate)) as usize
 }
 
 /// The codecs `docs/pack-format.md` lists: PCM WAV (8/16/24/32-bit int, 32-bit float; symphonia
@@ -543,6 +559,16 @@ mod tests {
         let pcm = decode(raw_wav(1, 1, 1_000, 8, &[0x80; 4_000]), "wav").unwrap();
         assert_eq!(pcm.samples.len(), 4_000);
         assert!(decode(raw_wav(1, 1, 1_000, 8, &[0x80; 4_001]), "wav").is_err());
+    }
+
+    #[test]
+    fn long_decoding_has_its_own_limit() {
+        // Sprite sheets of imported packs are long; they are cut up before use.
+        let sprite = raw_wav(1, 1, 1_000, 8, &[0x80; 60_000]);
+        assert!(decode(sprite.clone(), "wav").is_err());
+        assert_eq!(decode_long(sprite.clone(), "wav", 60.0).unwrap().samples.len(), 60_000);
+        let err = decode_long(sprite, "wav", 30.0).unwrap_err();
+        assert_eq!(err, "audio file is over 30 s long");
     }
 
     #[test]

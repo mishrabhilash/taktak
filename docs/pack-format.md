@@ -303,3 +303,110 @@ Exit status: 0 when every pack is valid, 1 when one has errors, 64 for a usage e
 contents are printed; nothing is ever read from the keyboard.
 
 To compare a pack's loudness with the bundled packs, see [Loudness](#loudness).
+
+## Importing Mechvibes packs
+
+Mechvibes packs carry no license, so TakTak never bundles or shares them. Users can import
+packs they already have, for their own use:
+
+```
+taktak-import-mechvibes <folder-or-zip>... [--out DIR] [--overwrite] [--no-split-release]
+```
+
+(From a checkout: `cargo run -p mechvibes-import --release -- <args>`.) `--out` defaults to the
+user pack folder (see [Where packs live](#where-packs-live)), where the running app picks the
+new pack up within a second. For each pack the tool prints the new id, the keys mapped, the
+key codes skipped, missing and unreadable files, and warnings. Exit status: 0 when every pack
+was imported, 1 when one failed, 64 for a usage error. The importer is the `pack::import`
+module of `taktak-core`, so the app can offer the same thing.
+
+### What can be imported
+
+| Variant | Recognized by | Sounds |
+|---|---|---|
+| Mechvibes v1, sprite | `key_define_type: "single"` | `defines: {"<code>": [start_ms, length_ms]}` slices of the `sound` file |
+| Mechvibes v1, files | `key_define_type: "multi"`, `"multiple"` or any other value; when the field is missing, arrays mean sprite and strings mean files | `defines: {"<code>": "file"}` |
+| Mechvibes v2 | `version: 2` | as v1 files, plus `"<code>-up"` release keys, `sound`/`soundup` fallback press/release for undefined keys, and `{a-b}` file ranges (`GENERIC_R{0-4}.mp3` becomes five variants) |
+| Mechvibes++ | `compatibility: true` | `"0<code>"` press and `"00<code>"` release; a plain `"<code>"` is the press only when `"0<code>"` is absent |
+| MechvibesDX | `definitions` (or `defs`), `config_version` `"2"` | W3C key names, `{"timing": [[start_ms, end_ms], …]}` over `audio_file` (or a per-key `audio_file`): one timing is a press, two are press and release, more are press and release with the rest ignored (warning). `options.recommended_volume` becomes `volume`, `options.random_pitch: true` becomes `variation.pitch` 0.10. A pack MechvibesDX converted from Mechvibes v1 (`config.json.v1.backup` next to `config.json`) is imported from the original config. |
+
+`"<code>-up"` slices in v1 sprite packs (Mechvibes' own CherryMX Black ABS has 48) are used as
+release sounds too. Not imported: mouse packs, Mechvibes config versions 3 and up (drafts no
+Mechvibes release reads), MechvibesDX `config_version` above 2.
+
+The source is a folder or a `.zip`. Its `config.json` (any letter case, a UTF-8 BOM is fine;
+comments and trailing commas are tolerated with a warning) is found by name at any depth: the
+shallowest one is the pack root, and two at the same depth are an error ("import them one at
+a time"). macOS metadata (`__MACOSX/`, `._*`, `.DS_Store`) is ignored; zips get the same size,
+entry-count, compression-ratio and overlap limits as [zip packs](#zip-packs), and entries that
+would escape the folder are skipped.
+
+### Keys
+
+- Mechvibes `defines` keys are libuiohook key codes, mapped by their libuiohook meaning with
+  the table in `src-tauri/core/src/pack/import/keycodes.rs` (168 codes; `"30"` is `KeyA`,
+  `"57416"` is `ArrowUp`). Mechvibes' own per-OS remaps are not replicated: they encode
+  position guesses and bugs (on macOS it plays ArrowUp's sound for F13).
+- The Windows-only aliases 60999–61011 (dedicated navigation and arrow keys) only fill gaps:
+  as in Mechvibes, the standard code's sound wins.
+- Packs numbered with Linux evdev codes (Linux-oriented re-packs; recognized by codes such as
+  `97`, right Control) have codes 85–127 read as evdev codes, for keys no libuiohook code in the
+  pack defines.
+- Unknown codes, keys TakTak does not have (media and browser keys), editor artefacts such as
+  `"91,91,92"` and Mechvibes++ mouse codes are skipped and listed in the report. When a JSON key
+  appears twice, the last one wins (as in Mechvibes), with a warning.
+- A key that is silent in Mechvibes (absent or `null`) plays the pack-wide fallback in TakTak,
+  because a pack cannot make a key silent (see [Resolution](#resolution-which-sound-a-key-plays)).
+
+### Sounds
+
+- File names are resolved leniently: the exact path, then ignoring case, then a unique file
+  with that name anywhere in the pack (`release/ENTER.mp3` that only exists as `ENTER.mp3`),
+  then, for a name without an extension, a unique `name.*`. Backslashes count as `/`.
+  Missing files are reported and their keys skipped; the import fails only if nothing usable
+  is left. (mechvibes.com downloads of "v2" packs contain only `config.json`; import the pack
+  folder from the Mechvibes app's `custom` folder instead.)
+- Audio is recognized by content, not extension (Mechvibes packs have `.wav` files holding MP3
+  and files without an extension), and decoded like pack audio: WAV, Ogg Vorbis and MP3. Other
+  formats (AAC/M4A, FLAC, AIFF, Opus) are reported as unreadable.
+- Every sound is cut from its file (sprite slices are clamped to the file; zero-length slices
+  and slices past the end are dropped with a warning), mixed down to mono, trimmed to start at
+  its onset (the first sample at max(noise floor + 20 dB, peak − 35 dB), capped at
+  peak − 20 dB, minus the 0.5 ms pre-roll: leading silence is keypress latency, and Mechvibes
+  sprite slices often start up to 40 ms early), cut to at most 1.95 s, faded out over 5 ms,
+  and written as 16-bit WAV at the source rate (48 kHz when the files have different rates).
+  Clips that stay below −50 dBFS are dropped as silent. Identical sounds are stored once.
+- **Release splitting** (on by default; `--no-split-release` turns it off). A Mechvibes v1
+  sprite slice holds the whole keystroke, and Mechvibes plays all of it on key-down. The
+  importer finds the release in it: the largest 2 ms rise of the 1 ms envelope between 35 % and
+  90 % of the onset-trimmed slice, if it rises by at least 10 dB, with the cut in the quiet
+  valley up to 30 ms before it. The release part is extended by up to 60 ms past the slice (the
+  slices clip the release tail), stopping 5 ms before the next slice in the sprite or once the
+  sound has decayed to the noise floor. A pack is split only when at least 70 % of its slices
+  have a clear release; the others are then cut at 65 % of their length (where the median
+  hand-cut release starts). Otherwise every key keeps the whole keystroke on press, as in
+  Mechvibes. MechvibesDX packs that cut each keystroke at its midpoint (a contiguous
+  press/release pair) are re-split the same way, falling back to their own boundary. On
+  Mechvibes' CherryMX Black ABS sprite the cut lands a median 7 ms from the 48 hand-cut
+  boundaries of its repository config; the midpoint is a median 32 ms early, inside the press.
+- `groups.alphanumeric` is the pack-wide fallback: v2 `sound`/`soundup`, otherwise up to four
+  letter keys' press (and release) sounds. Every key with sounds of its own gets a `keys`
+  entry, except keys whose sounds equal the fallback.
+
+### The imported pack
+
+- `id`: `mv-` and a slug of the pack name (`mv-cherrymx-blue-abs-keycaps`), with `-2`, `-3`, …
+  if a pack or folder in the destination already uses it. Importing the same pack again (same
+  id, same `source`) is refused unless `--overwrite` is given, which replaces the earlier
+  import.
+- `name`: the config's name, trimmed and cut to 64 characters (the full name then goes in
+  `description`); the folder name if there is none. `author`: `author` or `m_author`, else
+  "Unknown (imported from Mechvibes)". `license`: `LicenseRef-Personal`. `source`: the folder
+  or zip file name. `description`: notes the personal-use import, plus the config's own
+  description.
+- `preview.wav`: 1.9 s of the pack's own sounds on a fixed, made-up rhythm (H E L L O space T A
+  K Enter), peak-limited to −1 dBFS.
+- The pack is written to a hidden temporary folder in the destination, validated as the loader
+  would, and only then moved into place. It loads with the `LicenseRef-Personal` warning (plus
+  "no release sounds" for packs that have none), and `taktak-pack validate --strict` rejects it,
+  so an imported pack can never be bundled.

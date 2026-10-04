@@ -8,7 +8,7 @@
 | `src-tauri` (Milestones 3–4) | Tauri 2 app shell: tray, settings and onboarding windows, commands that drive `taktak-core`, per-app rules and auto-mute (Milestone 4: `rules.rs`, `automute.rs`, `apps.rs`). |
 | `tools/synth-packs` | CLI that measures any pack's typing loudness (`loudness`), which keeps the bundled packs level-matched, and generates experimental synthesized packs (not bundled; written to `target/synth-packs`). |
 | `tools/pack-maker` | CLI that records (microphone + key listener) or slices (an existing WAV) keyboard audio into a sound pack. |
-| `tools/mechvibes-import` (Milestone 5) | CLI that reuses `taktak-core`'s pack writer. |
+| `tools/mechvibes-import` (Milestone 5) | CLI `taktak-import-mechvibes`: imports Mechvibes / Mechvibes++ / MechvibesDX packs (folders or zips) the user already has into personal-use TakTak packs. A thin wrapper around `taktak-core`'s `pack::import` module, which the app can call directly. |
 
 ## Threads
 
@@ -212,6 +212,26 @@ for the small ones, since every decode thread first builds its sinc resampler. O
 device the cost moves to the 48 kHz packs instead. Either way a pack switch stays far below
 what a user notices, and it happens off the audio thread: the old bank keeps playing until the
 new one is swapped in.
+
+### Importing Mechvibes packs
+
+`pack::import` (`import_mechvibes(src, dest_packs_dir, ImportOptions)`) turns a Mechvibes pack
+into a pack folder in the format above; the format details and quirks are in
+[`pack-format.md`](pack-format.md#importing-mechvibes-packs). Its parts:
+
+- `import/input.rs`: the source folder or zip (the same size, entry-count, ratio and overlap
+  guards as pack zips, entry names through `enclosed_name`), `config.json` found by basename at
+  any depth, and lenient file-name resolution.
+- `import/mechvibes.rs`: reads the config variants into a plan (key → press/release clips).
+- `import/keycodes.rs`: the libuiohook code → `KeyboardEvent.code` table.
+- `import/audio.rs`: onset trimming, the press/release splitter, fades, the preview mix, WAV
+  output.
+- `import/mod.rs`: decodes every source once (`decode::decode_long`, which allows long sprite
+  sheets), renders and deduplicates the sounds, builds `pack.json`, writes the pack into a
+  hidden temporary folder in the destination, validates it with `load::check_all`, and only
+  then renames it into place, so the hot-reloading registry never sees a half-written pack.
+  An import of 10 MechvibesDX packs (about 100 keys and 165 sounds each, 0.3–2.7 MB Vorbis
+  sprites) takes 1.2 s in a release build.
 
 ## Privacy by construction
 

@@ -2268,6 +2268,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "mechvibes-import"
+version = "0.1.0"
+dependencies = [
+ "taktak-core",
+ "tempfile",
+]
+
+[[package]]
 name = "memchr"
 version = "2.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
