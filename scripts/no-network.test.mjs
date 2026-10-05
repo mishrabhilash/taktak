@@ -3,12 +3,17 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import {
+  captureConfigProblems,
+  capturePlistProblems,
   configProblems,
+  DENIED_CAPTURE_RUST_APIS,
+  DENIED_CAPTURE_WEB_APIS,
   DENIED_CRATES,
   DENIED_RUST_APIS,
   DENIED_WEB_APIS,
   deniedIn,
   disallowedUrls,
+  isComment,
   LOCK_ALLOWED,
   lockPackages,
   treeCrates,
@@ -69,4 +74,42 @@ test('tauri.conf.json: connect-src is IPC only', () => {
     'app.security.csp must be an object with an explicit connect-src',
     'plugins.updater is configured',
   ]);
+});
+
+test('no microphone or camera: plists and entitlements', () => {
+  assert.deepEqual(capturePlistProblems(readFileSync(path.join(root, 'src-tauri', 'Info.plist'), 'utf8')), []);
+  const plist = '<key>LSUIElement</key><true/><key>NSMicrophoneUsageDescription</key><string>x</string>';
+  assert.deepEqual(capturePlistProblems(plist), ['NSMicrophoneUsageDescription']);
+  const entitlements = '<key>com.apple.security.device.camera</key><true/><key>com.apple.security.device.audio-input</key><true/>';
+  assert.deepEqual(capturePlistProblems(entitlements), ['com.apple.security.device.audio-input', 'com.apple.security.device.camera']);
+});
+
+test('no microphone or camera: tauri.conf.json sends a Permissions-Policy and adds neither', () => {
+  const config = JSON.parse(readFileSync(path.join(root, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+  assert.deepEqual(captureConfigProblems(config), { problems: [], entitlements: null });
+  const open = structuredClone(config);
+  open.app.security.headers['Permissions-Policy'] = 'camera=(self), microphone=()';
+  open.bundle.macOS.entitlements = './TakTak.entitlements';
+  open.bundle.macOS.infoPlist = { NSCameraUsageDescription: 'scan a QR code' };
+  assert.deepEqual(captureConfigProblems(open), {
+    problems: [
+      'app.security.headers.Permissions-Policy must disable camera (camera=())',
+      'bundle.macOS mentions NSCameraUsageDescription',
+    ],
+    entitlements: './TakTak.entitlements',
+  });
+  assert.equal(captureConfigProblems({}).problems.length, 2);
+});
+
+test('no microphone or camera: capture API patterns catch code, comments are skipped', () => {
+  assert.ok(DENIED_CAPTURE_WEB_APIS.test('await navigator.mediaDevices.getUserMedia({ audio: true })'));
+  assert.ok(DENIED_CAPTURE_WEB_APIS.test('const r = new MediaRecorder(stream);'));
+  assert.ok(DENIED_CAPTURE_WEB_APIS.test('new webkitSpeechRecognition()'));
+  assert.ok(!DENIED_CAPTURE_WEB_APIS.test('const audio = new Audio(url);'));
+  assert.ok(DENIED_CAPTURE_RUST_APIS.test('let d = host.default_input_device();'));
+  assert.ok(DENIED_CAPTURE_RUST_APIS.test('mScope: kAudioObjectPropertyScopeInput,'));
+  assert.ok(!DENIED_CAPTURE_RUST_APIS.test('let d = host.default_output_device();'));
+  assert.ok(isComment('    // never default_input_device()'));
+  assert.ok(isComment(' * getUserMedia is not used'));
+  assert.ok(!isComment('let x = 1; // trailing'));
 });

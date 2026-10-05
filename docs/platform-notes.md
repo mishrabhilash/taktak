@@ -9,7 +9,9 @@ one `Down` and one `Up` per physical press (auto-repeat and stray ups filtered b
 kept but unsupported there (`rulesSupported` is false). The macOS side is described in
 [`app.md`](app.md) and the overall limits table in [`architecture.md`](architecture.md); one
 macOS permission quirk that shapes the welcome window is recorded under
-[macOS: Input Monitoring](#macos-input-monitoring).
+[macOS: Input Monitoring](#macos-input-monitoring), and why macOS logs microphone and camera
+checks for an app that never uses either under
+[macOS: Microphone and camera](#macos-microphone-and-camera).
 
 Whatever the platform, the listener only ever reads which physical key went down or up. No
 characters, no keyboard layout lookups, nothing logged, stored or sent. The native codes are
@@ -267,6 +269,62 @@ the unified log (`log show --predicate 'process == "tccd"'`); the code is
   build stops matching ("Failed to match existing code requirement" in the log): the stale-entry
   troubleshooting (remove with −, add with +, or `tccutil reset`) covers that. `npm run app`
   signs with a stable identity (see `app.md` § Development signing).
+
+## macOS: Microphone and camera
+
+TakTak never touches the microphone or the camera: it opens one audio *output* stream and no
+input, asks for neither permission (no `NSMicrophoneUsageDescription` /
+`NSCameraUsageDescription`, no `com.apple.security.device.audio-input` / `.camera`
+entitlement) and its web views expose no capture API. Verified via tccd logs on macOS 26
+(Tahoe): no camera or microphone is ever opened and no permission is ever requested. macOS
+still logs read-only *preflights* of those permissions for TakTak, which look alarming in
+`log show --predicate 'process == "tccd"'` but come from the system, not from TakTak:
+
+| Who asks (`requesting=`) | Service | When | Why |
+|---|---|---|---|
+| `com.apple.audio.coreaudiod` | Microphone, ScreenCapture, AudioCapture | first CoreAudio call of the process (the default *output* device lookup) | The audio server checks these for every client that connects, output-only ones included: Apple's own `/usr/bin/afplay` gets the same three checks. In an app bundle the CoreAudio client library also preflights the microphone itself just before. |
+| TakTak itself (WebKit, in-process) | Microphone, then Camera | first web view of the process | WebKit computes the default of its `mediaDevices` preference from the app's microphone and camera status (`WebPreferences::platformInitializeStore` → `TCCAccessPreflight`) before any configuration applies. |
+| `com.apple.WebKit.GPU` (responsible: TakTak) | Microphone (and coreaudiod for it) | when WebKit starts its GPU process | Part of WebKit's GPU process start-up, whatever the page does. |
+
+All of them are `preflight=yes` (`TCCAccessRequest` with no prompt) and none is answered
+"allowed" (`authValue` 0, denied, or 1, not determined). For a hardened app without the
+entitlement tccd also logs "Prompting policy for hardened runtime;
+service: kTCCServiceMicrophone requires entitlement com.apple.security.device.audio-input but
+it is missing" (or the camera equivalent). That line is tccd explaining its answer to a status
+query, not an access attempt. No prompt appears, TakTak never shows up under Microphone or
+Camera in Privacy & Security, and no device is opened (no orange or green indicator). They
+happen once per process, at start-up: opening Settings later, a second launch handing over to
+Settings, and pack previews (which reopen the output stream) add none. The only ways to avoid
+them would be not playing sound through CoreAudio and not using WebKit (or, for WebKit's own
+check, running in the App Sandbox, which TakTak's key listener and pack folders rule out).
+
+What TakTak does on its side:
+
+- **Output only.** `core/src/audio` asks cpal for the default *output* device and its output
+  configuration and builds an output stream. It does not call cpal's `description()` on macOS,
+  which also counts the device's *input* channels (a stream-configuration query in the input
+  scope); the device name comes from two global-scope CoreAudio reads instead
+  (`core/src/audio/device_name.rs`). cpal's output path (the DefaultOutput unit, physical
+  format, listeners on the default output device) uses only global and output scopes.
+- **No capture in the web views.** Every window is built by `src/webview.rs`, which gives
+  WebKit a configuration with `navigator.mediaDevices` (`getUserMedia`, `getDisplayMedia`,
+  `enumerateDevices`), WebRTC and speech recognition switched off (private `WKPreferences`
+  setters, each called only if present). Before, WebKit already hid `navigator.mediaDevices`
+  (because TakTak holds neither permission) but exposed `RTCPeerConnection` and
+  `SpeechRecognition`; now `typeof` each is `"undefined"` in every window. Every page is also
+  served with `Permissions-Policy: camera=(), microphone=(), display-capture=()`.
+- **Guarded in CI.** `npm run no-network` (check 6) fails if an Info.plist, entitlements file or
+  `tauri.conf.json` ever gains a microphone/camera usage description or entitlement, if the
+  Permissions-Policy stops disabling both, or if the UI or app Rust code calls a capture or
+  audio input API. (`tools/pack-maker`, a developer tool that records packs from a microphone,
+  is never bundled and is not covered.)
+
+To check a build: launch the app bundle (`open -n TakTak.app`), wait a few seconds, then
+`log show --last 30s --predicate 'process == "tccd"' --style compact | grep -iE "taktak"`.
+Expect only the preflights above, all at start-up. A plain `target/release/taktak` is signed
+ad hoc as `taktak-<hash>` (not `tech.taktak.app`) and attributed to the terminal that started
+it; build with `--features tauri/custom-protocol` (as `tauri build` does), or it loads the dev
+server URL instead of the bundled UI.
 
 ## Summary for the UI
 

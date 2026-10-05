@@ -64,6 +64,13 @@ objc2-app-kit = { version = "0.3.2", default-features = false, features = [
     "NSWindow",
     "NSWorkspace",
 ] }
+# Every window's WKWebViewConfiguration, made with media capture off (`src/webview.rs`). The
+# version and features tauri and wry already build.
+objc2-web-kit = { version = "0.3.2", default-features = false, features = [
+    "std",
+    "WKPreferences",
+    "WKWebViewConfiguration",
+] }
 objc2-core-foundation = { version = "0.3.2", default-features = false, features = [
     "std",
     "CFDictionary",

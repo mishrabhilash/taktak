@@ -14,13 +14,12 @@
 
 use crate::service::Service;
 use crate::state::Permission;
+use crate::webview;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, PoisonError};
 use std::thread;
 use std::time::{Duration, Instant};
-use tauri::{
-    AppHandle, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent,
-};
+use tauri::{AppHandle, Manager, Runtime, WebviewWindow, WindowEvent};
 use tauri_plugin_positioner::{Position, WindowExt};
 
 /// The popover anchored to the tray icon.
@@ -108,7 +107,7 @@ pub fn show_settings<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             if let Some(service) = app.try_state::<Service>() {
                 service.reset_latency();
             }
-            WebviewWindowBuilder::new(app, SETTINGS, WebviewUrl::App("index.html".into()))
+            webview::builder(app, SETTINGS)
                 .title("TakTak Settings")
                 .inner_size(820.0, 600.0)
                 .min_inner_size(620.0, 460.0)
@@ -138,16 +137,15 @@ pub fn show_onboarding<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<()> {
             window
         }
         None => {
-            let window =
-                WebviewWindowBuilder::new(app, ONBOARDING, WebviewUrl::App("index.html".into()))
-                    .title("Welcome to TakTak")
-                    .inner_size(480.0, 440.0)
-                    .resizable(false)
-                    .maximizable(false)
-                    .minimizable(false)
-                    .center()
-                    .focused(true)
-                    .build()?;
+            let window = webview::builder(app, ONBOARDING)
+                .title("Welcome to TakTak")
+                .inner_size(480.0, 440.0)
+                .resizable(false)
+                .maximizable(false)
+                .minimizable(false)
+                .center()
+                .focused(true)
+                .build()?;
             let handle = app.clone();
             window.on_window_event(move |event| {
                 if let WindowEvent::CloseRequested { .. } = event
@@ -223,7 +221,7 @@ fn hide_popover<R: Runtime>(app: &AppHandle<R>, popover: &WebviewWindow<R>) -> t
 }
 
 fn create_tray<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<WebviewWindow<R>> {
-    let window = WebviewWindowBuilder::new(app, TRAY, WebviewUrl::App("index.html".into()))
+    let window = webview::builder(app, TRAY)
         .title("TakTak")
         .inner_size(340.0, 460.0)
         .resizable(false)

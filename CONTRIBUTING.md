@@ -121,9 +121,17 @@ negotiable, and CI enforces the mechanical parts.
    offline — it never uses the internet.", `src/lib/offline.ts`, shown in the welcome window,
    Settings → About and the tray popover): any change that would make that untrue is out.
 4. **No files about the user.** Settings only; logs go to stderr, never to a file.
+5. **Never touch the microphone or the camera.** Audio is output only: no input devices or
+   streams and no input-scope CoreAudio queries in the app; no microphone, camera or speech
+   recognition usage descriptions or entitlements; no capture APIs in the UI (`mediaDevices`,
+   `getUserMedia`, `MediaRecorder`, `SpeechRecognition`, WebRTC); every window is built with
+   `src-tauri/src/webview.rs`, which switches WebKit's capture features off. (The pack-maker
+   tool records from a microphone when *you* run it; it is never bundled.) See
+   [docs/platform-notes.md](docs/platform-notes.md#macos-microphone-and-camera) for the
+   system-made checks macOS still logs.
 
-`npm run no-network` ([scripts/no-network.mjs](scripts/no-network.mjs)) enforces rule 3. It
-fails on:
+`npm run no-network` ([scripts/no-network.mjs](scripts/no-network.mjs)) enforces rules 3 and
+5. It fails on:
 
 - a denylisted networking crate (`reqwest`, `hyper`, `ureq`, `isahc`, `surf`, `curl`,
   `openssl-sys`, `rustls`, `tungstenite`, `h2`, `quinn`, Tauri's http/updater/websocket
@@ -136,6 +144,9 @@ fails on:
 - a `connect-src` beyond Tauri's IPC, or an updater/HTTP plugin in `tauri.conf.json`;
 - any `http(s)://` URL in the shipped UI bundle other than XML namespace names, Svelte's error
   documentation links and docs/license links.
+- a microphone/camera/speech usage description or entitlement in `src-tauri`'s plists,
+  entitlements or `tauri.conf.json`, a `Permissions-Policy` that no longer disables camera and
+  microphone, or a capture or audio input API in `src/` or the app's Rust code.
 
 Don't extend an allow-list to make a change pass. If you believe a dependency is needed, open
 an issue first and explain why it cannot reach the network.

@@ -27,6 +27,9 @@
       "dangerousDisableAssetCspModification": [
         "style-src"
       ],
+      "headers": {
+        "Permissions-Policy": "camera=(), microphone=(), display-capture=()"
+      },
       "freezePrototype": true,
       "capabilities": [
         "default"

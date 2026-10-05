@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// The "no network" guard: TakTak never uses the internet, and CI keeps it that way.
+// The "no network" guard: TakTak never uses the internet, and CI keeps it that way. It also
+// guards the other privacy promise: TakTak never touches the microphone or the camera.
 //
 //   npm run no-network                    every check (needs `cargo fetch --locked` once, and a
 //                                         shipped UI build in dist/, see below)
@@ -17,18 +18,28 @@
 //   5. The shipped UI bundle (dist/) contains no http(s) URL except the allowed identifiers and
 //      documentation/license links (ALLOWED_URLS). Build it as `tauri build` does, without the
 //      browser mock: TAURI_ENV_PLATFORM=linux npm run build (any platform name works).
+//   6. No microphone or camera: no Info.plist usage description or entitlement for either (in
+//      src-tauri's plists and entitlements, or inline in tauri.conf.json), the pages get a
+//      Permissions-Policy that disables both, the UI calls no capture API (mediaDevices,
+//      getUserMedia, MediaRecorder, SpeechRecognition, …) and the app's Rust code (src-tauri; not
+//      the pack-maker developer tool, which records from a microphone) no audio input API.
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import {
+  captureConfigProblems,
+  capturePlistProblems,
   configProblems,
+  DENIED_CAPTURE_RUST_APIS,
+  DENIED_CAPTURE_WEB_APIS,
   DENIED_CRATES,
   DENIED_NPM,
   DENIED_RUST_APIS,
   DENIED_WEB_APIS,
   deniedIn,
   disallowedUrls,
+  isComment,
   LOCK_ALLOWED,
   lockPackages,
   treeCrates,
@@ -153,9 +164,43 @@ if (!args.includes('--skip-dist')) {
   }
 }
 
+// 6. No microphone or camera
+{
+  const problems = [];
+  const config = JSON.parse(readFileSync(path.join(root, 'src-tauri', 'tauri.conf.json'), 'utf8'));
+  const { problems: configIssues, entitlements } = captureConfigProblems(config);
+  problems.push(...configIssues.map((p) => `src-tauri/tauri.conf.json: ${p}`));
+  const plists = files('src-tauri', /\.(plist|entitlements)$/);
+  if (entitlements) {
+    const file = path.join(root, 'src-tauri', entitlements);
+    if (existsSync(file) && !plists.includes(file)) plists.push(file);
+  }
+  for (const file of plists) {
+    for (const name of capturePlistProblems(readFileSync(file, 'utf8'))) problems.push(`${rel(file)}: ${name}`);
+  }
+  const scan = (list, pattern) => {
+    for (const file of list) {
+      readFileSync(file, 'utf8')
+        .split('\n')
+        .forEach((line, i) => {
+          if (!isComment(line) && pattern.test(line)) problems.push(`${rel(file)}:${i + 1}: ${line.trim()}`);
+        });
+    }
+  };
+  // The shipped app only: tools/pack-maker is a developer tool that records packs from a
+  // microphone, and is never bundled.
+  scan(files('src-tauri', /\.rs$/), DENIED_CAPTURE_RUST_APIS);
+  scan(files('src', /\.(ts|js|svelte|mjs)$/), DENIED_CAPTURE_WEB_APIS);
+  if (problems.length > 0) {
+    fail(`TakTak must never ask for the microphone or camera:\n  ${problems.join('\n  ')}`);
+  } else {
+    ok(`no microphone or camera: ${plists.length} plist/entitlements file(s) clean, Permissions-Policy set, no capture APIs`);
+  }
+}
+
 if (failures.length > 0) {
   for (const message of failures) console.error(`no-network: FAIL ${message}`);
   console.error('no-network: TakTak is an offline app. See CONTRIBUTING.md § Privacy rules.');
   process.exit(1);
 }
-console.log('no-network: TakTak still never touches the network.');
+console.log('no-network: TakTak still never touches the network, the microphone or the camera.');

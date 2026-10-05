@@ -246,6 +246,14 @@ into a pack folder in the format above; the format details and quirks are in
   URLs in the UI bundle beyond namespaces and docs/license links.
 - Per-app rules (Milestone 4) see only the frontmost app's bundle id and name, keep only the
   current value in `AppState`, and never log it. Only the user's rule list is persisted.
+- TakTak never touches microphone or camera; verified via tccd logs. Audio is output only (no
+  input device, no input-scope CoreAudio query: the device name avoids cpal's `description()`,
+  `core/src/audio/device_name.rs`), the bundle has no microphone/camera usage description or
+  entitlement, and every web view is built with media capture, WebRTC and speech recognition
+  off (`src/webview.rs`) and served `Permissions-Policy: camera=(), microphone=()`. CI enforces
+  it (`npm run no-network`, check 6). macOS still logs read-only permission *preflights* by
+  coreaudiod (for every process that plays sound) and by WebKit at start-up; see
+  [`platform-notes.md`](platform-notes.md#macos-microphone-and-camera).
 
 ## Measured (Milestone 1, MacBook Pro speakers, 44.1 kHz)
 

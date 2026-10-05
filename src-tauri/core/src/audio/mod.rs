@@ -15,6 +15,7 @@
 //! recovery.
 
 mod bank;
+mod device_name;
 mod mixer;
 
 pub use bank::{SoundBank, SoundMap, Variation};
@@ -289,7 +290,8 @@ impl Output {
     fn default(buffer_frames: Option<u32>) -> Result<Output, AudioError> {
         let host = cpal::default_host();
         let device = host.default_output_device().ok_or_else(|| err("no output device"))?;
-        let name = device.description().map(|d| d.name().to_owned()).unwrap_or_default();
+        // Not `description()`: on macOS that also queries the device's input side.
+        let name = device_name::of(&device);
         let supported = device.default_output_config().map_err(err)?;
 
         let buffer_frames = buffer_frames.map(|want| match supported.buffer_size() {

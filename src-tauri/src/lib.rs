@@ -8,7 +8,8 @@
 //!   unit-tested).
 //! - [`apps`]: the macOS observers (frontmost app, screen lock, session), running apps, icons
 //!   and the app picker; stubs elsewhere.
-//! - [`commands`], [`tray`], [`windows`], [`hotkey`]: thin Tauri glue.
+//! - [`commands`], [`tray`], [`windows`], [`hotkey`]: thin Tauri glue. [`webview`]: the window
+//!   builder, with microphone, camera and other media capture switched off.
 //! - [`mechvibes`]: "Import Mechvibes pack…": the picker and the import on a worker thread.
 //! - `instance` (macOS): one TakTak per user; a second launch hands over and exits.
 //!   [`relaunch`]: quitting and starting again without handing over.
@@ -34,6 +35,7 @@ pub mod settings;
 pub mod state;
 pub mod system;
 pub mod tray;
+pub mod webview;
 pub mod windows;
 
 use apps::SystemEvent;

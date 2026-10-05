@@ -115,3 +115,61 @@ export function configProblems(config) {
   if (config?.bundle?.createUpdaterArtifacts) problems.push('bundle.createUpdaterArtifacts is set');
   return problems;
 }
+
+// TakTak also never touches the microphone or the camera (docs/platform-notes.md § Microphone
+// and camera). These rules keep any change from asking for either.
+
+/** Info.plist keys that ask the user for the microphone, camera or speech recognition. */
+export const DENIED_PLIST_KEYS = [
+  'NSMicrophoneUsageDescription',
+  'NSCameraUsageDescription',
+  'NSSpeechRecognitionUsageDescription',
+];
+
+/** Entitlements that grant (hardened runtime or App Sandbox) microphone or camera access. */
+export const DENIED_ENTITLEMENTS = [
+  'com.apple.security.device.audio-input',
+  'com.apple.security.device.microphone',
+  'com.apple.security.device.camera',
+];
+
+/** Capture and recording Web APIs, which TakTak's UI source must not use. */
+export const DENIED_CAPTURE_WEB_APIS =
+  /\b(mediaDevices|getUserMedia|webkitGetUserMedia|getDisplayMedia|enumerateDevices|MediaRecorder|(webkit)?SpeechRecognition)\b/;
+
+/** Audio input and capture APIs, which TakTak's Rust code must not use (output only). */
+export const DENIED_CAPTURE_RUST_APIS =
+  /\b(default_input_device|default_input_config|supported_input_configs|build_input_stream(_raw)?|kAudioObjectPropertyScopeInput|kAudioDevicePropertyScopeInput|AVCaptureDevice|AVCaptureSession|AVAudioRecorder)\b/;
+
+/** The denied Info.plist keys and entitlements that `text` (a plist) mentions. */
+export function capturePlistProblems(text) {
+  return [...DENIED_PLIST_KEYS, ...DENIED_ENTITLEMENTS].filter((name) => text.includes(name));
+}
+
+/**
+ * Problems with a Tauri config for capture: the pages must be sent a Permissions-Policy that
+ * disables the camera and microphone, and the config must not add a denied Info.plist key or
+ * entitlement inline. Returns `{ problems, entitlements }`, the latter the entitlements file
+ * the macOS bundle uses (relative to src-tauri), if any, for the caller to check.
+ */
+export function captureConfigProblems(config) {
+  const problems = [];
+  const policy = config?.app?.security?.headers?.['Permissions-Policy'];
+  const text = Array.isArray(policy) ? policy.join(', ') : typeof policy === 'string' ? policy : '';
+  for (const feature of ['camera', 'microphone']) {
+    if (!new RegExp(`(^|[,;\\s])${feature}=\\(\\)`).test(text)) {
+      problems.push(`app.security.headers.Permissions-Policy must disable ${feature} (${feature}=())`);
+    }
+  }
+  const macos = config?.bundle?.macOS ?? {};
+  for (const name of capturePlistProblems(JSON.stringify(macos))) {
+    problems.push(`bundle.macOS mentions ${name}`);
+  }
+  const entitlements = typeof macos.entitlements === 'string' ? macos.entitlements : null;
+  return { problems, entitlements };
+}
+
+/** Whether `line` is (the start of) a comment, which the source scans skip. */
+export function isComment(line) {
+  return /^\s*(\/\/|\/\*|\*|#)/.test(line);
+}

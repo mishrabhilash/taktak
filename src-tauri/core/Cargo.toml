@@ -19,6 +19,13 @@ serde_json = "1.0.151"
 symphonia = { version = "0.6.1", default-features = false, features = ["wav", "pcm", "ogg", "vorbis", "mp3"] }
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+# The output device's name from global-scope CoreAudio reads (`audio/device_name.rs`), instead
+# of cpal's `description()`, which also queries the device's input side. Both crates already
+# come with cpal; these features add nothing to the build.
+objc2-core-audio = { version = "0.3.2", default-features = false, features = ["std", "AudioHardware"] }
+objc2-core-foundation = { version = "0.3.2", default-features = false, features = ["std", "CFString"] }
+
 [target.'cfg(target_os = "windows")'.dependencies]
 windows-sys = { version = "0.61.2", features = [
     "Win32_Foundation",
