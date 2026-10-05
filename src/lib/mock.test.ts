@@ -41,6 +41,7 @@ describe('mock backend', () => {
       launchAtLogin: false,
       appRule: { mode: 'everywhere', apps: [] },
       muteOnOutputChange: false,
+      idleSleepMinutes: 5,
       // A returning user (see scenario "firstrun").
       onboardingDone: true,
     });
@@ -537,6 +538,33 @@ describe('mock backend', () => {
       /No usable sounds/,
     );
     expect(await call(backend.call('import_mechvibes_pack', { kind: 'any' }))).toBeNull();
+  });
+
+  it('stores the idle sleep time rounded and limited like the app', async () => {
+    const { backend, call } = setup();
+    expect((await call(backend.call('get_state', undefined))).audioAsleep).toBe(false);
+    const cases: [number, number][] = [
+      [10, 10],
+      [4.6, 5],
+      [-2, 0],
+      [99999, 1440],
+      [Number.NaN, 5],
+    ];
+    for (const [sent, stored] of cases) {
+      const s = await call(backend.call('set_idle_sleep_minutes', { minutes: sent }));
+      expect(s.settings.idleSleepMinutes).toBe(stored);
+    }
+  });
+
+  it('scenario "idle": the output is paused until a key press; muting or never pausing ends it', async () => {
+    const { backend, call } = setup('?scenario=idle');
+    const s = await call(backend.call('get_state', undefined));
+    expect(s.audioAsleep).toBe(true);
+    expect(s.playing).toBe(true);
+    expect((await call(backend.call('set_muted', { muted: true }))).audioAsleep).toBe(false);
+    const again = setup('?scenario=idle');
+    const off = await again.call(again.backend.call('set_idle_sleep_minutes', { minutes: 0 }));
+    expect(off.audioAsleep).toBe(false);
   });
 
   it('hands out copies, so callers cannot change its state', async () => {

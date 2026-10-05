@@ -3,7 +3,9 @@
 //!
 //! Threads talking to the callback:
 //! - the input hook thread, via [`TriggerSender`] (one SPSC ring, wait-free push). It only
-//!   forwards key events; the mixer chooses and humanizes the sound.
+//!   forwards key events; the mixer chooses and humanizes the sound. The ring can outlive an
+//!   engine: [`Engine::start_with`] takes its [`TriggerReceiver`] and [`Engine::shutdown`] hands
+//!   it back, so a key listener keeps its sender while the output is closed and reopened.
 //! - the control side (UI / pack loader), via [`Engine`]: bank swaps and previews over a
 //!   command ring; gains, the variant mode and the humanize amount through atomics.
 //!
@@ -29,8 +31,8 @@ use crate::latency::LatencySample;
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{BufferSize, FromSample, SampleFormat, SizedSample, StreamConfig, SupportedBufferSize};
 use rtrb::{Consumer, Producer, PushError, RingBuffer};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 const TRIGGER_RING: usize = 256;
@@ -262,6 +264,81 @@ impl TriggerSender {
     }
 }
 
+/// The audio callback's end of a trigger ring, while no engine holds it (see
+/// [`Engine::start_with`] and [`Engine::shutdown`]). Triggers sent meanwhile wait in the ring and
+/// play when the next engine's first buffer drains it.
+pub struct TriggerReceiver {
+    rx: Consumer<Trigger>,
+}
+
+impl TriggerReceiver {
+    /// Drops the queued triggers the hook received before `cutoff_ns` (on the [`clock`]
+    /// timebase; 0 = unknown counts as old): key presses that would only play late. Returns how
+    /// many were dropped.
+    pub fn discard_before(&mut self, cutoff_ns: u64) -> usize {
+        let mut dropped = 0;
+        while self.rx.peek().is_ok_and(|t| t.received_ns < cutoff_ns) {
+            let _ = self.rx.pop();
+            dropped += 1;
+        }
+        dropped
+    }
+
+    /// Triggers waiting to be played.
+    pub fn len(&self) -> usize {
+        self.rx.slots()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.rx.is_empty()
+    }
+}
+
+/// A new trigger ring: the input thread's [`TriggerSender`] and the [`TriggerReceiver`] an
+/// engine plays from ([`Engine::start_with`]).
+pub fn trigger_ring() -> (TriggerSender, TriggerReceiver) {
+    let (tx, rx) = RingBuffer::new(TRIGGER_RING);
+    (TriggerSender { tx }, TriggerReceiver { rx })
+}
+
+/// Where the trigger consumer goes when the callback that owned it is dropped.
+type TriggerHome = Arc<Mutex<Option<Consumer<Trigger>>>>;
+
+/// The trigger consumer inside the audio callback. When the stream drops the callback (after
+/// its last call, on the thread that drops the stream: never the real-time thread while it
+/// renders), the consumer goes back to `home`, where [`Engine::shutdown`] picks it up.
+struct HomingTriggers {
+    rx: Option<Consumer<Trigger>>,
+    home: TriggerHome,
+}
+
+impl HomingTriggers {
+    fn is_empty(&self) -> bool {
+        self.rx.as_ref().is_none_or(Consumer::is_empty)
+    }
+
+    fn pop(&mut self) -> Option<Trigger> {
+        self.rx.as_mut()?.pop().ok()
+    }
+}
+
+impl Drop for HomingTriggers {
+    fn drop(&mut self) {
+        if let Some(rx) = self.rx.take() {
+            *self.home.lock().unwrap_or_else(PoisonError::into_inner) = Some(rx);
+        }
+    }
+}
+
+/// What [`Engine::shutdown`] hands back.
+pub struct Stopped {
+    /// The bank that was playing, if the callback gave it up in time.
+    pub bank: Option<SoundBank>,
+    /// The trigger ring's receiving end, for the next engine. `None` only if the backend kept
+    /// the callback alive past the stream (the ring is then lost: start a new one).
+    pub triggers: Option<TriggerReceiver>,
+}
+
 /// The running output stream plus its control handle. `Send` (asserted below) but not `Sync`:
 /// an app that shares it between threads keeps it behind a mutex.
 pub struct Engine {
@@ -276,6 +353,7 @@ const _: () = {
     const fn assert_send<T: Send>() {}
     assert_send::<Engine>();
     assert_send::<TriggerSender>();
+    assert_send::<TriggerReceiver>();
 };
 
 /// The default output device and how [`Engine::start`] would open it.
@@ -322,31 +400,62 @@ pub fn default_output(buffer_frames: Option<u32>) -> Result<DeviceInfo, AudioErr
 }
 
 impl Engine {
-    /// Opens the default output device. `make_bank` receives the device sample rate so
-    /// samples can be resampled once, up front.
+    /// Opens the default output device with a new trigger ring. `make_bank` receives the device
+    /// sample rate so samples can be resampled once, up front.
     pub fn start(
         config: EngineConfig,
         make_bank: impl FnOnce(u32) -> SoundBank,
     ) -> Result<(Engine, TriggerSender), AudioError> {
+        let (sender, triggers) = trigger_ring();
+        let engine = Engine::start_with(config, make_bank, triggers).map_err(|(e, _)| e)?;
+        Ok((engine, sender))
+    }
+
+    /// [`Engine::start`] playing the triggers of an existing ring (handed back by an earlier
+    /// engine's [`Engine::shutdown`], or new from [`trigger_ring`]). Triggers already queued play
+    /// in the first buffer. On failure the receiver comes back with the error.
+    pub fn start_with(
+        config: EngineConfig,
+        make_bank: impl FnOnce(u32) -> SoundBank,
+        triggers: TriggerReceiver,
+    ) -> Result<Engine, (AudioError, TriggerReceiver)> {
         let Output { device, sample_format, stream_config, info } =
-            Output::default(config.buffer_frames)?;
+            match Output::default(config.buffer_frames) {
+                Ok(output) => output,
+                Err(e) => return Err((e, triggers)),
+            };
 
         // The clock initializes its timebase on first use; do that here, not in the callback.
         let _ = clock::now_ns();
         let mixer = Mixer::new(Box::new(make_bank(info.sample_rate)));
-        let (ctl, triggers, state) = connect(mixer, info.channels as usize, &config);
+        let (ctl, state) = connect_with(mixer, info.channels as usize, &config, triggers);
+        let home = ctl.triggers_home.clone();
+        // A stream that fails to build or play drops the callback, which sends the receiver home.
+        let fail = |e: AudioError| {
+            let rx = home.lock().unwrap_or_else(PoisonError::into_inner).take();
+            // The callback state was dropped, so the receiver is home (or never left).
+            let rx = rx.map(|rx| TriggerReceiver { rx }).unwrap_or_else(|| trigger_ring().1);
+            (e, rx)
+        };
 
         let health = Arc::new(StreamHealth::new());
-        let stream = match sample_format {
+        let built = match sample_format {
             SampleFormat::F32 => build::<f32>(&device, &stream_config, state, health.clone()),
             SampleFormat::I16 => build::<i16>(&device, &stream_config, state, health.clone()),
             SampleFormat::I32 => build::<i32>(&device, &stream_config, state, health.clone()),
             SampleFormat::U16 => build::<u16>(&device, &stream_config, state, health.clone()),
-            other => return Err(err(format!("unsupported sample format {other:?}"))),
-        }?;
-        stream.play().map_err(err)?;
+            other => {
+                drop(state);
+                Err(err(format!("unsupported sample format {other:?}")))
+            }
+        };
+        let stream = built.map_err(fail)?;
+        if let Err(e) = stream.play() {
+            drop(stream);
+            return Err(fail(err(e)));
+        }
 
-        Ok((Engine { _stream: stream, ctl, info, health }, triggers))
+        Ok(Engine { _stream: stream, ctl, info, health })
     }
 
     /// Buffer under/overruns (audible glitches) since the last call. Poll it from a timer on
@@ -374,10 +483,19 @@ impl Engine {
     /// pause, or on a new device with the same rate) can start with it instead of decoding the
     /// pack again. Waits up to `timeout` for the callback to give the bank up; `None` if it does
     /// not (a stream that has failed no longer calls back). The stream stops either way.
-    pub fn stop(mut self, timeout: Duration) -> Option<SoundBank> {
+    pub fn stop(self, timeout: Duration) -> Option<SoundBank> {
+        self.shutdown(timeout).bank
+    }
+
+    /// [`Engine::stop`] that also hands back the trigger ring's receiving end, so the key
+    /// listener feeding it can keep running and the next engine ([`Engine::start_with`]) plays
+    /// what it sends. The stream stops either way.
+    pub fn shutdown(mut self, timeout: Duration) -> Stopped {
         let bank = self.ctl.take_bank(timeout);
+        let home = self.ctl.triggers_home.clone();
         drop(self);
-        bank
+        let rx = home.lock().unwrap_or_else(PoisonError::into_inner).take();
+        Stopped { bank, triggers: rx.map(|rx| TriggerReceiver { rx }) }
     }
 
     pub fn info(&self) -> &DeviceInfo {
@@ -455,6 +573,8 @@ struct Control {
     /// Bank swaps whose replaced bank has not come back through `garbage` yet (each swap
     /// returns exactly one), so [`Control::take_bank`] knows which bank came back last.
     banks_out: usize,
+    /// Where the callback's trigger consumer lands once the stream has dropped it.
+    triggers_home: TriggerHome,
 }
 
 impl Control {
@@ -549,14 +669,26 @@ impl Control {
     }
 }
 
-/// Creates every ring between the control side, the input thread and the callback, and the
-/// shared settings with `config`'s initial values.
+/// [`connect_with`] on a new trigger ring.
+#[cfg(test)]
 fn connect(
     mixer: Mixer,
     channels: usize,
     config: &EngineConfig,
 ) -> (Control, TriggerSender, CallbackState) {
-    let (trigger_tx, trigger_rx) = RingBuffer::new(TRIGGER_RING);
+    let (sender, triggers) = trigger_ring();
+    let (ctl, state) = connect_with(mixer, channels, config, triggers);
+    (ctl, sender, state)
+}
+
+/// Creates the rings between the control side and the callback, and the shared settings with
+/// `config`'s initial values; the callback plays from `triggers`.
+fn connect_with(
+    mixer: Mixer,
+    channels: usize,
+    config: &EngineConfig,
+    triggers: TriggerReceiver,
+) -> (Control, CallbackState) {
     let (command_tx, command_rx) = RingBuffer::new(COMMAND_RING);
     let (garbage_tx, garbage_rx) = RingBuffer::new(GARBAGE_RING);
     let (metrics_tx, metrics_rx) = if config.measure_latency {
@@ -567,6 +699,7 @@ fn connect(
     };
     let settings = Arc::new(Settings::new(config));
     let channels = channels.max(1);
+    let home: TriggerHome = Arc::new(Mutex::new(None));
 
     let ctl = Control {
         commands: command_tx,
@@ -574,10 +707,11 @@ fn connect(
         settings: settings.clone(),
         metrics: metrics_rx,
         banks_out: 0,
+        triggers_home: home.clone(),
     };
     let state = CallbackState {
         mixer,
-        triggers: trigger_rx,
+        triggers: HomingTriggers { rx: Some(triggers.rx), home },
         commands: command_rx,
         garbage: garbage_tx,
         metrics: metrics_tx,
@@ -585,14 +719,14 @@ fn connect(
         channels,
         scratch: vec![0.0; SCRATCH_FRAMES * channels].into_boxed_slice(),
     };
-    (ctl, TriggerSender { tx: trigger_tx }, state)
+    (ctl, state)
 }
 
 /// Everything the audio callback owns. Built on the control thread, then moved into the
 /// stream; after that it is only touched by the callback.
 struct CallbackState {
     mixer: Mixer,
-    triggers: Consumer<Trigger>,
+    triggers: HomingTriggers,
     commands: Consumer<Command>,
     garbage: Producer<Garbage>,
     metrics: Option<Producer<LatencySample>>,
@@ -621,7 +755,7 @@ impl CallbackState {
             return;
         }
         let now = clock::now_ns();
-        while let Ok(t) = self.triggers.pop() {
+        while let Some(t) = self.triggers.pop() {
             let played = self.mixer.start(t.key, t.action);
             // Latency is measured per key press that makes a sound.
             if played
@@ -752,6 +886,48 @@ mod tests {
         let s = metrics.pop().unwrap();
         assert_eq!((s.input_ns, s.output_ns), (2, 5_000));
         assert!(metrics.pop().is_err());
+    }
+
+    #[test]
+    fn the_trigger_ring_outlives_the_callback() {
+        let (tx, rx) = trigger_ring();
+        let (ctl, mut state) =
+            connect_with(Mixer::new(Box::new(bank(10, 0.5))), 1, &EngineConfig::default(), rx);
+        let mut tx = tx;
+        assert!(tx.send(trig(Key::KeyA, KeyAction::Down, 5)));
+        state.drain(0);
+        assert_eq!(state.mixer.active_voices(), 1);
+        // The stream drops the callback: the receiver goes home, still connected to `tx`.
+        drop(state);
+        let rx = ctl.triggers_home.lock().unwrap().take().expect("sent home");
+        let mut rx = TriggerReceiver { rx };
+        assert!(rx.is_empty());
+        // Keys pressed while no engine runs wait for the next one.
+        for received_ns in [10, 20, 30] {
+            assert!(tx.send(trig(Key::KeyA, KeyAction::Down, received_ns)));
+        }
+        assert_eq!(rx.len(), 3);
+        assert_eq!(rx.discard_before(20), 1, "only the stale one");
+        let (_ctl, mut state) =
+            connect_with(Mixer::new(Box::new(bank(10, 0.5))), 1, &EngineConfig::default(), rx);
+        state.drain(0);
+        assert_eq!(state.mixer.active_voices(), 2, "both play in the first buffer");
+        let mut out = [0.0f32; 1];
+        state.render(&mut out);
+        assert_eq!(out, [1.0]);
+    }
+
+    #[test]
+    fn discarding_stops_at_the_first_fresh_trigger() {
+        let (mut tx, mut rx) = trigger_ring();
+        for received_ns in [0, 5, 50, 6] {
+            tx.send(trig(Key::KeyA, KeyAction::Down, received_ns));
+        }
+        // FIFO: what follows a fresh trigger is newer in practice, and is never looked at.
+        assert_eq!(rx.discard_before(10), 2);
+        assert_eq!(rx.len(), 2);
+        assert_eq!(rx.discard_before(u64::MAX), 2);
+        assert!(rx.is_empty());
     }
 
     #[test]

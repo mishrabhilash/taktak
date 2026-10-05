@@ -20,6 +20,7 @@ export type OptimisticKey =
   | 'humanize'
   | 'launchAtLogin'
   | 'muteOnOutputChange'
+  | 'idleSleepMinutes'
   | 'appRule'
   | 'muted';
 

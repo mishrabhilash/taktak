@@ -6,10 +6,11 @@
     openPermissionSettings,
     relaunch,
     setEnabled,
+    setIdleSleepMinutes,
     setLaunchAtLogin,
     setMuteOnOutputChange,
   } from '../../lib/api';
-  import { formatAudioDevice } from '../../lib/format';
+  import { formatAudioDevice, idleSleepChoices, idleSleepLabel } from '../../lib/format';
   import { COPY } from '../../lib/onboarding';
   import { permissionName, platform } from '../../lib/platform';
   import { grantLabel } from '../../lib/status';
@@ -29,11 +30,13 @@
   );
 
   const audio = $derived(
-    {
-      ok: { label: 'Working', tone: 'ok' },
-      starting: { label: 'Starting…', tone: 'off' },
-      fault: { label: 'Not working', tone: 'error' },
-    }[s.audio.state],
+    s.audio.state === 'ok' && s.audioAsleep
+      ? { label: 'Paused', tone: 'off' }
+      : {
+          ok: { label: 'Working', tone: 'ok' },
+          starting: { label: 'Starting…', tone: 'off' },
+          fault: { label: 'Not working', tone: 'error' },
+        }[s.audio.state],
   );
 </script>
 
@@ -152,9 +155,51 @@
     </div>
     <span class="pill {audio.tone}">{audio.label}</span>
   </div>
+  <div class="row">
+    <div class="row-text">
+      <label class="row-label" for="gen-idle-sleep">Pause audio when idle</label>
+      <span class="hint" id="gen-idle-sleep-hint">
+        {#if s.audioAsleep}
+          Paused now: nobody typed for a while. The next key press turns it back on.
+        {:else}
+          Closes the sound output when you stop typing, which saves battery. The next key press
+          turns it back on; that first click comes a moment late.
+        {/if}
+      </span>
+    </div>
+    <select
+      id="gen-idle-sleep"
+      class="select"
+      aria-describedby="gen-idle-sleep-hint"
+      value={s.settings.idleSleepMinutes}
+      onchange={(e) =>
+        set('idleSleepMinutes', Number(e.currentTarget.value), setIdleSleepMinutes)}
+    >
+      {#each idleSleepChoices(s.settings.idleSleepMinutes) as minutes (minutes)}
+        <option value={minutes}>{idleSleepLabel(minutes)}</option>
+      {/each}
+    </select>
+  </div>
 </div>
 
 <style>
+  .select {
+    flex: none;
+    height: 28px;
+    padding: 0 8px;
+    border: 0.5px solid var(--border);
+    border-radius: var(--radius-s);
+    background: var(--surface);
+    color: inherit;
+    font: inherit;
+    font-size: 13px;
+  }
+
+  .select:focus-visible {
+    outline: none;
+    box-shadow: var(--focus-ring);
+  }
+
   /* In a narrow window the button goes under the text instead of squeezing it. */
   .wrap {
     flex-wrap: wrap;

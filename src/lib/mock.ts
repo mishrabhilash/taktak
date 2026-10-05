@@ -85,8 +85,12 @@ const DEFAULT_SETTINGS: Settings = {
   launchAtLogin: false,
   appRule: { mode: 'everywhere', apps: [] },
   muteOnOutputChange: false,
+  idleSleepMinutes: 5,
   onboardingDone: false,
 };
+
+/** The longest `idleSleepMinutes` (a day). */
+const MAX_IDLE_MINUTES = 1440;
 
 /** The most ids one `get_app_icons` call answers. */
 const MAX_ICON_IDS = 200;
@@ -250,6 +254,7 @@ function initialState(scenarios: Set<string>): AppState {
       state: 'ok',
       message: null,
     },
+    audioAsleep: false,
     frontmostApp: ref(fakeApp('com.microsoft.VSCode')),
     ruleBlocked: false,
     autoMute: null,
@@ -276,6 +281,8 @@ function initialState(scenarios: Set<string>): AppState {
     state.frontmostApp = ref(fakeApp('com.tinyspeck.slackmacgap'));
   }
   if (scenarios.has('outputchange')) state.settings.muteOnOutputChange = true;
+  // Nobody typed for idleSleepMinutes: the output is paused until the next key press.
+  if (scenarios.has('idle')) state.audioAsleep = true;
   if (scenarios.has('unsupported')) {
     state.rulesSupported = false;
     state.frontmostApp = null;
@@ -435,6 +442,8 @@ export function createMockBackend(
       !state.ruleBlocked &&
       state.permission === 'granted' &&
       state.audio.state === 'ok';
+    // Idle sleep only applies while a key press could sound (the output is closed otherwise).
+    if (!state.playing) state.audioAsleep = false;
     return structuredClone(state);
   }
 
@@ -617,6 +626,14 @@ export function createMockBackend(
       if (next === rule) return snapshot();
       return change((s) => (s.settings.appRule = next));
     },
+    set_idle_sleep_minutes: ({ minutes }) =>
+      change((s) => {
+        s.settings.idleSleepMinutes = Number.isFinite(minutes)
+          ? Math.min(MAX_IDLE_MINUTES, Math.max(0, Math.round(minutes)))
+          : 5;
+        // Never pausing (or a new idle time) opens the output again.
+        s.audioAsleep = false;
+      }),
     set_mute_on_output_change: ({ enabled }) =>
       change((s) => {
         s.settings.muteOnOutputChange = enabled;

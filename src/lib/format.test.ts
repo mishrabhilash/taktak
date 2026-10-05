@@ -4,6 +4,8 @@ import {
   formatMs,
   formatPercent,
   formatSampleRate,
+  idleSleepChoices,
+  idleSleepLabel,
   plural,
   unit,
 } from './format';
@@ -89,5 +91,23 @@ describe('plural', () => {
     expect(plural(0, 'warning')).toBe('0 warnings');
     expect(plural(3, 'warning')).toBe('3 warnings');
     expect(plural(2, 'key press', 'key presses')).toBe('2 key presses');
+  });
+});
+
+describe('idle sleep', () => {
+  it('names the idle time', () => {
+    expect(idleSleepLabel(0)).toBe('Never');
+    expect(idleSleepLabel(1)).toBe('After 1 minute');
+    expect(idleSleepLabel(5)).toBe('After 5 minutes');
+    expect(idleSleepLabel(60)).toBe('After 1 hour');
+    expect(idleSleepLabel(120)).toBe('After 2 hours');
+    expect(idleSleepLabel(90)).toBe('After 90 minutes');
+  });
+
+  it('offers the standard choices, and a hand-edited value in its place', () => {
+    expect(idleSleepChoices(5)).toEqual([1, 2, 5, 10, 15, 30, 60, 0]);
+    expect(idleSleepChoices(0)).toEqual([1, 2, 5, 10, 15, 30, 60, 0]);
+    expect(idleSleepChoices(7)).toEqual([1, 2, 5, 7, 10, 15, 30, 60, 0]);
+    expect(idleSleepChoices(240)).toEqual([1, 2, 5, 10, 15, 30, 60, 240, 0]);
   });
 });

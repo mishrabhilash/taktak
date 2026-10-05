@@ -70,6 +70,9 @@ pub struct Settings {
     pub app_rule: AppRule,
     /// Auto-mute when the default output device changes (M4).
     pub mute_on_output_change: bool,
+    /// Close the output after this many minutes without a key press (it reopens on the next
+    /// one); 0 = never. At most [`crate::idle::MAX_MINUTES`].
+    pub idle_sleep_minutes: u32,
     /// The onboarding window was closed at least once (M4). `false` here (a fresh install); the
     /// settings loader treats an existing file without the field as `true` (contract § Settings
     /// migration), since whoever has a settings file has run TakTak before.
@@ -90,6 +93,7 @@ impl Default for Settings {
             launch_at_login: false,
             app_rule: AppRule::default(),
             mute_on_output_change: false,
+            idle_sleep_minutes: crate::idle::DEFAULT_MINUTES,
             onboarding_done: false,
         }
     }
@@ -289,6 +293,9 @@ pub struct AppState {
     pub user_packs_dir: Option<String>,
     pub permission: Permission,
     pub audio: AudioStatus,
+    /// The output is paused because no key went down for `settings.idle_sleep_minutes`; the
+    /// next key press reopens it (and plays). `playing` is unaffected.
+    pub audio_asleep: bool,
     /// The app in front now, TakTak's own windows excluded (M4). `None` when unknown, without a
     /// bundle id, or where rules are unsupported. Current value only: never logged or persisted.
     pub frontmost_app: Option<AppRef>,
@@ -324,6 +331,7 @@ impl AppState {
             user_packs_dir: None,
             permission: Permission::Unknown,
             audio: AudioStatus::default(),
+            audio_asleep: false,
             frontmost_app: None,
             rule_blocked: false,
             auto_mute: None,
@@ -416,6 +424,7 @@ mod tests {
                 "launchAtLogin": false,
                 "appRule": { "mode": "everywhere", "apps": [] },
                 "muteOnOutputChange": false,
+                "idleSleepMinutes": 5,
                 "onboardingDone": false,
             })
         );
@@ -533,6 +542,7 @@ mod tests {
             [
                 "activePackError",
                 "audio",
+                "audioAsleep",
                 "autoMute",
                 "frontmostApp",
                 "invalidPacks",

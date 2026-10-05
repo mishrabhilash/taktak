@@ -15,7 +15,7 @@ use crate::state::{
     AppInfo, AppRuleMode, AppState, LatencyReport, MechvibesImport, PickKind, VariantMode,
 };
 use crate::{
-    apps, automute, hotkey, mechvibes, permission, relaunch as restart, rules, system, tray,
+    apps, automute, hotkey, idle, mechvibes, permission, relaunch as restart, rules, system, tray,
     windows,
 };
 use std::collections::HashMap;
@@ -325,6 +325,13 @@ pub fn remove_rule_app(service: State<'_, Service>, id: String) -> AppState {
 #[tauri::command]
 pub fn set_mute_on_output_change(service: State<'_, Service>, enabled: bool) -> AppState {
     service.update(|s| automute::set_mute_on_output_change(s, enabled))
+}
+
+/// Rounded and limited to `0..=`[`idle::MAX_MINUTES`] (non-finite → the default); 0 = never.
+#[tauri::command]
+pub fn set_idle_sleep_minutes(service: State<'_, Service>, minutes: f64) -> AppState {
+    let minutes = idle::minutes_from(minutes);
+    service.update(|s| s.settings.idle_sleep_minutes = minutes)
 }
 
 /// Async so the window is built off the main thread (WebView2 deadlocks otherwise).

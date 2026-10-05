@@ -36,3 +36,23 @@ export function formatAudioDevice(audio: AudioStatus): string {
 export function plural(count: number, one: string, many = `${one}s`): string {
   return `${count} ${count === 1 ? one : many}`;
 }
+
+/** The idle times Settings → General offers for `idleSleepMinutes` (0 = never). */
+export const IDLE_SLEEP_CHOICES: readonly number[] = [1, 2, 5, 10, 15, 30, 60, 0];
+
+/** `idleSleepMinutes` in words: 0 → "Never", 1 → "After 1 minute", 60 → "After 1 hour". */
+export function idleSleepLabel(minutes: number): string {
+  if (minutes <= 0) return 'Never';
+  if (minutes % 60 === 0) return `After ${plural(minutes / 60, 'hour')}`;
+  return `After ${plural(minutes, 'minute')}`;
+}
+
+/** The choices to offer: the standard ones, plus `current` in order if it is not one of them. */
+export function idleSleepChoices(current: number): number[] {
+  const choices = [...IDLE_SLEEP_CHOICES];
+  if (!choices.includes(current)) {
+    const at = current <= 0 ? choices.length : choices.findIndex((m) => m === 0 || m > current);
+    choices.splice(at, 0, current);
+  }
+  return choices;
+}

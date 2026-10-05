@@ -97,11 +97,14 @@
   (`pack::load`) decodes every referenced file once to mono f32 at the device rate, then sends
   the finished `SoundBank` with `Engine::replace_bank` and, for "click to hear", the decoded
   preview clip with `Engine::preview`. In the app (`src-tauri`) this is the `taktak-control`
-  thread (engine, listener, registry and watcher; asleep unless a message, a ≤ 4 Hz engine
-  poll while the output is open, the 0.2 Hz default-device look while it is closed, or the
-  one-shot rule-block wake-up is due). It opens the engine and the listener only while a key
-  press can make a sound (sounds on, not muted, not auto-muted, not rule-blocked for 5 s or
-  longer, permission granted) or a preview plays, and closes them otherwise. It also feeds
+  thread (engine, listener, registry and watcher; parked in `thread::park` unless a message,
+  a ≤ 4 Hz engine poll while the output is open, the 0.2 Hz default-device look while it is
+  closed, the one-shot rule-block wake-up or the one-shot idle deadline is due, or the key hook
+  ends an idle sleep; every sender unparks it after queuing, `ControlTx`). It opens the engine
+  and the listener only while a key press can make a sound (sounds on, not muted, not
+  auto-muted, not rule-blocked for 5 s or longer, permission granted) or a preview plays, and
+  closes them otherwise. After `idleSleepMinutes` without a key press it closes the engine but
+  keeps the listener (idle sleep, below). It also feeds
   every output device it opens or looks at into `DeviceWatch` (`automute.rs`), which arms the
   `outputChanged` auto-mute. Decoding runs on `taktak-loader`, settings writes on
   `taktak-settings` and `state-changed` broadcasts on `taktak-events`; at startup a
@@ -109,6 +112,36 @@
   opens the welcome window if it is due. The Tauri main thread only runs commands, window and
   tray work and the macOS observers, and never waits on the other threads (see
   `docs/ui-contract.md`, `docs/app.md`).
+
+## Idle sleep
+
+`src-tauri/src/idle.rs`, wired in `service.rs`. The trigger ring outlives the engine:
+`Engine::start_with(config, make_bank, TriggerReceiver)` plays from an existing ring and
+`Engine::shutdown` hands the `TriggerReceiver` back (the callback's consumer returns home when
+the stream drops the callback, on the thread that drops it, never on the real-time thread). So
+the listener keeps its `TriggerSender` across closing and reopening the output, including
+fault rebuilds and reroutes.
+
+- **Hook side** (`Activity::key_down`, called by `input::forward` for a key-down that passed the
+  gate): store the receive time in an `AtomicU64`, load the `asleep` flag; only if it is set,
+  swap it off and `Thread::unpark` the control thread. No allocation, lock or system call
+  otherwise. The key-down is then pushed into the ring as always.
+- **Control side** (`IdleSleep`): each reconcile computes whether the idle time has passed since
+  the later of the last key-down and the last control-side activity (keys became able to sound,
+  the setting changed). If so it arms the flag, looks at the last key-down again (a key-down
+  racing the decision is either seen there or sees the flag and unparks; SeqCst on both sides),
+  closes the engine (parking the bank and the ring's receiver) and publishes `audioAsleep`. The
+  deadline joins `next_wake` once, so the timer adds no periodic wake-up (the 4 Hz engine poll
+  runs anyway while the output is open).
+- **Wake**: the unparked thread sees the flag cleared, drops ring entries older than 200 ms, and
+  starts the engine on the parked receiver; the waking key-down plays at frame 0 of the first
+  buffer. Measured with the self-test's synthetic keyboard (release build, MacBook Pro speakers,
+  44.1 kHz, 64 frames, 7 wakes per run, five runs on a busy machine): the engine runs about 5 ms
+  after the key-down; the first buffer comes 18–34 ms after it (p50 per run; worst single wake
+  46 ms), against about 1 ms while awake, plus the 4.6 ms output latency. When another app
+  keeps the device running, a wake costs only the ~5 ms of stream setup. The rest is CoreAudio
+  starting the device's IO, which no stream-side trick avoids; keeping a paused stream instead
+  of closing it would save only those ~5 ms.
 
 ## The gate, per-app rules and auto-mute (Milestone 4)
 
@@ -149,7 +182,9 @@
 
 1. Key goes down → OS input pipeline timestamps it (`event_ns`).
 2. Our hook callback runs (`received_ns`): code → `Key` → not a repeat → gate open →
-   `TriggerSender::send` (wait-free).
+   (key-down) `Activity::key_down`, which unparks the control thread only if the output sleeps
+   → `TriggerSender::send` (wait-free). After an idle sleep the trigger waits in the ring until
+   the reopened stream's first buffer.
 3. Next audio callback (≤ one buffer period later) picks it up, chooses the key's sample from
    the bank's `SoundMap`, humanizes pitch and volume slightly, and starts a voice at frame 0
    of the buffer it is filling.
@@ -286,13 +321,12 @@ hook thread being scheduled). The hook thread therefore runs at `QOS_CLASS_USER_
 | Linux X11 | PipeWire runs the graph at the smallest `node.latency` any client asks for (1024 frames, ~21 ms, only when nobody asks for less), so our small fixed buffer lowers the quantum for every app while the stream is open; plan to request 128/48000 there (see platform-notes.md). | XInput2 raw events (implemented, Milestone 5): listen-only, no root; falls back to evdev without a usable X server. Not yet run on real Linux. | `_NET_ACTIVE_WINDOW` → `WM_CLASS`. |
 | Linux Wayland | as above | No global key API by design. Only `/dev/input` via evdev (implemented, Milestone 5; hotplug via inotify), which needs the `input` group (equivalent to keylogger rights): `InputError::PermissionDenied` until the user opts in. `TAKTAK_INPUT=x11` settles for XWayland (keys in X11 apps only). The app explains the opt-in, its command and its cost (`onboarding.inputGroupNeeded`, Milestone 5). | No generic API. Compositor-specific only (Sway/Hyprland IPC, GNOME needs an extension). Rules are unavailable otherwise. |
 
-Always-on stream: keeping the output stream open is what makes ~5 ms possible. Cold-starting
-it on a keypress costs 30+ ms (seen as the first-trigger outlier during testing). The open
-stream also keeps the audio device awake: measured on a MacBook Pro (built-in speakers,
-macOS 26), `coreaudiod` uses 5–9 % of one core while any output stream runs, whatever the
-buffer size (64 to 512 frames, silence), against 0 % with none; TakTak's own process stays at
-≈ 0.3 %. The app therefore closes the stream (and the key listener) whenever no key press can
-make a sound: sounds off, muted, or no permission. The decoded bank is kept, so reopening costs
-only the ~0.1 s the device takes to open, at the moment the user turns sounds back on. Still
-planned: suspend the stream after N minutes without keystrokes too, and accept one slow first
-click on resume.
+Open stream: keeping the output stream open is what makes ~5 ms possible. Cold-starting it on
+a keypress costs about 20–25 ms to the first buffer (idle sleep, above). The open stream also
+keeps the audio device awake: measured on a MacBook Pro (built-in speakers, macOS 26),
+`coreaudiod` uses 5–9 % of one core while any output stream runs, whatever the buffer size (64
+to 512 frames, silence), against 0 % with none; TakTak's own process stays at ≈ 0.3 %. The app
+therefore closes the stream (and the key listener) whenever no key press can make a sound:
+sounds off, muted, or no permission; and closes the stream alone after `idleSleepMinutes`
+(default 5) without a key press, accepting one slower first click on the way back. The decoded
+bank is kept, so reopening needs no decode.

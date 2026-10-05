@@ -136,6 +136,9 @@ export const removeRuleApp = (id: string): Promise<AppState> => call('remove_rul
 /** Turning it off also clears an "outputChanged" auto-mute. */
 export const setMuteOnOutputChange = (enabled: boolean): Promise<AppState> =>
   call('set_mute_on_output_change', { enabled });
+/** Rounded and limited to 0..1440 by the app; 0 = never pause. */
+export const setIdleSleepMinutes = (minutes: number): Promise<AppState> =>
+  call('set_idle_sleep_minutes', { minutes });
 export const openOnboarding = (): Promise<void> => call('open_onboarding');
 /** Marks the onboarding done and closes its window. */
 export const finishOnboarding = (): Promise<AppState> => call('finish_onboarding');

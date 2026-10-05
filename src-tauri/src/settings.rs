@@ -47,6 +47,7 @@ pub fn sanitize(mut settings: Settings) -> Settings {
     settings.press_volume = unit(settings.press_volume);
     settings.release_volume = unit(settings.release_volume);
     settings.humanize = unit(settings.humanize);
+    settings.idle_sleep_minutes = settings.idle_sleep_minutes.min(crate::idle::MAX_MINUTES);
     let id = settings.pack_id.trim();
     settings.pack_id = if id.is_empty() { DEFAULT_PACK_ID.to_owned() } else { id.to_owned() };
     if settings.mute_hotkey.as_deref().is_some_and(|h| h.trim().is_empty()) {

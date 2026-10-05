@@ -78,6 +78,8 @@ interface Settings {
   launchAtLogin: boolean;
   appRule: AppRule;              // (M4) per-app rules; default { mode: "everywhere", apps: [] }
   muteOnOutputChange: boolean;   // (M4) auto-mute when the default output device changes; default false
+  idleSleepMinutes: number;      // close the output after this many minutes without a key press
+                                 // (see "Power"); 0 = never; default 5; whole minutes, at most 1440
   onboardingDone: boolean;       // (M4) the onboarding window was closed at least once; default false
 }
 
@@ -176,6 +178,9 @@ interface AppState {
   userPacksDir: string | null;
   permission: Permission;
   audio: AudioStatus;
+  audioAsleep: boolean;           // the output is paused because no key went down for
+                                  // settings.idleSleepMinutes; the next key press reopens it and
+                                  // plays (see "Power"). `playing` is unaffected
   frontmostApp: AppRef | null;    // (M4) the app in front now (TakTak's own windows excluded); null
                                   // when unknown, when it has no bundle id, or !rulesSupported.
                                   // Current value only: never logged, persisted or collected
@@ -247,6 +252,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 | `add_rule_app` **(M4)** | `{ id: string; name: string }` | Appends `{ id, name }` to `settings.appRule.apps`. Both are trimmed; an empty name becomes the id. An id that is already listed changes nothing (no error, the entry keeps its fields). Rejects an empty id, one longer than 255 characters or containing whitespace or control characters ("That is not an app TakTak can recognize."), TakTak's own id `tech.taktak.app` ("TakTak itself can't be listed: its windows always follow the app you were in."), and a 201st entry ("You can list up to 200 apps."). Persisted. |
 | `remove_rule_app` **(M4)** | `{ id: string }` | Removes that entry; an id that is not listed changes nothing. Persisted. |
 | `set_mute_on_output_change` **(M4)** | `{ enabled: boolean }` | Persisted. `false` also clears an `outputChanged` auto-mute. |
+| `set_idle_sleep_minutes` | `{ minutes: number }` | Rounded to whole minutes and clamped to 0..1440 (non-finite → 5). Persisted. A change restarts the idle time; 0 (or any change while asleep) reopens a sleeping output. |
 | `open_onboarding` **(M4)** | — | Shows/creates the onboarding window (activating TakTak). Returns `void`. Async (window creation off the main thread). |
 | `finish_onboarding` **(M4)** | — | Sets `settings.onboardingDone = true` (persisted), then closes the onboarding window if it is open. Returns the new `AppState`. |
 | `relaunch` **(M4)** | — | Quits like `quit` (pending settings saved, audio stopped) and starts TakTak again. Returns `void` (the promise never settles). For when macOS only lets a relaunched TakTak listen (**(M5)** and for a Windows or Linux key listener that failed to start). See "Relaunch" for what the app must guarantee. |
@@ -258,7 +264,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 
 | Event | Payload | When |
 |---|---|---|
-| `state-changed` | `AppState` | After any change: commands, tray menu actions, hotkey, pack hot-reload, permission granted, audio fault/recovery, pack load finished. **(M4)** Also: the frontmost app changes (event-driven, never polled), the screen locks or unlocks, the session becomes inactive or active, an auto-mute starts or clears, the onboarding window closes. |
+| `state-changed` | `AppState` | After any change: commands, tray menu actions, hotkey, pack hot-reload, permission granted, audio fault/recovery, pack load finished, the output going to sleep or waking (`audioAsleep`). **(M4)** Also: the frontmost app changes (event-driven, never polled), the screen locks or unlocks, the session becomes inactive or active, an auto-mute starts or clears, the onboarding window closes. |
 
 ## Behaviour rules
 
@@ -266,7 +272,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
   Missing/corrupt file → defaults (`tactile`, master 0.7, press/release 1.0, consistent,
   humanize 0.25, hotkey `CommandOrControl+Alt+Shift+M`, launch at login off, enabled on;
   **(M4)** `appRule` `{ mode: "everywhere", apps: [] }`, `muteOnOutputChange` false,
-  `onboardingDone` false).
+  `onboardingDone` false; `idleSleepMinutes` 5). A file without `idleSleepMinutes` gets 5.
 - **(M4) Settings migration.** A Milestone 3 file has none of the three new fields; it loads with
   the defaults above, except that `onboardingDone` is **true** when the file exists but has no
   `onboardingDone` field (whoever has a settings file has run TakTak before; if Input
@@ -313,6 +319,23 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
   **(M4)** Auto-mute closes it at once. A rule block silences keys at once but closes the
   output only once it has lasted 5 s (a one-shot wake-up, not a poll), so hopping through a
   blocked app with ⌘Tab does not reopen the device; leaving the blocked app reopens it at once.
+- **Idle sleep.** While keys could sound but no key has gone down (with the gate open) for
+  `settings.idleSleepMinutes` (default 5; 0 = never), the output closes and `audioAsleep` turns
+  true; the key listener keeps running and the playing pack stays decoded. The idle time is a
+  one-shot deadline in the control thread (no new periodic wake-up) and starts again when keys
+  become able to sound (sounds on, unmuted, permission granted, a rule block ends) and when the
+  setting changes. The next key-down ends the sleep: the hook notes the time and wakes the
+  control thread (an atomic flag and a thread unpark: no allocation, no lock, no polling), which
+  reopens the output; that key press waits in the trigger ring, which outlives the stream, and
+  plays in the new stream's first buffer, a few tens of ms late (about 20–35 ms to the first
+  buffer on a MacBook Pro's speakers, about 5 ms when another app keeps the device running,
+  plus the usual output latency; the self-test measures it).
+  Key presses older than 200 ms when the output (re)opens are dropped rather than played late.
+  Turning sounds off, muting, an auto-mute or a 5 s rule block end the sleep (`audioAsleep`
+  false) and close the listener as before. A preview while asleep opens the output; once it has
+  played the output goes back to sleep. `playing` stays true while asleep: a key press still
+  makes a sound. Stream faults and reroutes keep the listener and its ring (a reopen no longer
+  restarts the keyboard hook).
 - Missing Input Monitoring permission: `permission = "denied"`, `playing = false`; poll and
   start listening automatically once granted. A key
   listener that fails to start although permission is granted (macOS sometimes refuses the tap
@@ -471,6 +494,13 @@ still there after the unlock.
 - **Auto-mute** (Settings → General): the switch "Mute when the output device changes" (help: "When
   headphones are plugged in or unplugged, or AirPods connect, TakTak mutes itself until you
   unmute."), and the note "TakTak is always silent while the screen is locked."
+- **Idle sleep** (Settings → General → Sound output): "Pause audio when idle", a choice of
+  "After 1 minute", 2, 5 (default), 10, 15, 30 minutes, "After 1 hour" and "Never" (a hand-edited
+  other value is listed in its place), with the help "Closes the sound output when you stop
+  typing, which saves battery. The next key press turns it back on; that first click comes a
+  moment late." While `audioAsleep`, the help reads "Paused now: nobody typed for a while. The
+  next key press turns it back on." and the output device's pill says "Paused" (instead of
+  "Working").
 - **Onboarding window** (`onboarding` label), minimal and friendly; the words live in
   `src/lib/onboarding.ts` (`COPY`):
   1. The keycap logo, the title "Welcome to TakTak" and ONE line: on macOS "TakTak needs Input
@@ -575,7 +605,9 @@ not part of this contract yet.
   The state, the control thread (engine, listener, packs) and `state-changed` broadcasting:
   `src-tauri/src/service.rs`, with the testable logic in `catalog.rs` (pack list, fallback,
   hot-reload reactions), `settings.rs` (persistence, clamping, volume curve), `input.rs` (gate,
-  permission polling), `loader.rs` (pack decoding thread) and `hotkey.rs`.
+  permission polling, the self-test's synthetic keyboard), `idle.rs` (idle sleep: the hook's
+  activity flag, the control thread's waker and the sleep decision), `loader.rs` (pack decoding
+  thread) and `hotkey.rs`.
 - **(M4)** Pure logic is kept out of the platform code and unit-tested: rule evaluation, gate
   composition and the 5 s rule-block timer in `src-tauri/src/rules.rs`; the auto-mute state
   machine and `DeviceWatch` in `src-tauri/src/automute.rs`; `derive()` (auto-mute, rule block,
@@ -607,7 +639,12 @@ not part of this contract yet.
   bundled pack, drives the engine and the real service (pack switches, a preview opening and
   closing the output, a hot-reloaded user pack that breaks, is named as broken on a fresh
   start and is deleted, settings persistence) without windows, tray or keyboard listener,
-  prints one line per check and exits 0 when nothing failed. **(M5)** It also imports a
+  prints one line per check and exits 0 when nothing failed. It also runs a service with a
+  synthetic keyboard (`input::KeySource::Synthetic`: the real gate, activity tracking, trigger
+  ring and control thread, no OS hook) and a 100 ms idle unit: the output sleeps after the idle
+  time while the listener stays, seven key-downs wake it and play (the wake latency, key-down to
+  first buffer, is printed), muting while asleep stops the listener, a preview while asleep opens
+  the output and it sleeps again, and `idleSleepMinutes` 0 keeps it open. **(M5)** It also imports a
   synthetic Mechvibes pack into its user packs folder (`mechvibes::import`, without the picker)
   and checks that it is listed as a personal pack, then recognized as already imported and
   replaced on overwrite.
@@ -627,6 +664,8 @@ not part of this contract yet.
   in front), `switching` (the frontmost app changes every 3 s), `locked` (screen locked, unlocks
   after 4 s), `outputchange` (`muteOnOutputChange` on; 3 s in, the output moves to AirPods Pro)
   and `unsupported` (no per-app rules and no permission step, like Windows and Linux).
+  `idle`: the output is asleep (`audioAsleep`) until muting or `set_idle_sleep_minutes`
+  ends it (the mock never types).
   **(M5)** `inputgroup` (Linux without the `input` group) and `listenerfail` (a Windows or Linux
   listener that failed to start; `relaunch` fixes it after 1.5 s). `unlisted` (like `denied`,
   but macOS adds nothing to the Input Monitoring list: `open_permission_settings` answers `false`

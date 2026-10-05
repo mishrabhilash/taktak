@@ -20,6 +20,7 @@ pub mod automute;
 pub mod catalog;
 pub mod commands;
 pub mod hotkey;
+pub mod idle;
 pub mod input;
 #[cfg(target_os = "macos")]
 pub mod instance;
@@ -171,6 +172,7 @@ pub fn run() {
             commands::add_rule_app,
             commands::remove_rule_app,
             commands::set_mute_on_output_change,
+            commands::set_idle_sleep_minutes,
             commands::open_onboarding,
             commands::finish_onboarding,
             commands::relaunch,
@@ -268,6 +270,8 @@ fn setup<R: Runtime>(
         // `TAKTAK_NO_INPUT=1` runs without the keyboard listener and never asks for
         // permission (UI development and automated runs).
         listen: std::env::var_os("TAKTAK_NO_INPUT").is_none_or(|v| v.is_empty() || v == "0"),
+        keys: input::KeySource::Os,
+        idle_unit: idle::MINUTE,
     };
     log::info!(
         "TakTak {} starting; bundled packs: {}",

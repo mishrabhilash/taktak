@@ -9,7 +9,9 @@
 //! bundles (moved to the default pack), a hot-reloaded user pack that breaks
 //! (and is named as broken by a freshly started service) and is deleted, and a synthetic
 //! Mechvibes pack imported into the user packs folder (listed as a personal pack, then
-//! recognized as already imported and replaced). Prints one line per check with its timing;
+//! recognized as already imported and replaced), and idle sleep with a synthetic keyboard (the
+//! output closes when nobody types; a key-down reopens it and plays, its wake latency measured).
+//! Prints one line per check with its timing;
 //! exit code 0 when nothing failed.
 //!
 //! `--allow-no-audio` turns "no output device" into skipped playback checks instead of a
@@ -17,11 +19,12 @@
 
 use crate::automute::{self, Event};
 use crate::catalog;
-use crate::input;
+use crate::idle::{self, Activity, Waker};
+use crate::input::{self, KeySource};
 use crate::loader;
 use crate::mechvibes;
 use crate::rules;
-use crate::service::{Config, NO_OUTPUT, Service, Shared};
+use crate::service::{Config, ControlTx, NO_OUTPUT, Service, Shared};
 use crate::settings::{self, Persister};
 use crate::state::{
     AppRef, AppRule, AppRuleEntry, AppRuleMode, AppState, AudioState, AutoMute, DEFAULT_PACK_ID,
@@ -33,7 +36,7 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::mpsc;
+use std::sync::{Arc, mpsc};
 use std::thread;
 use std::time::{Duration, Instant};
 use taktak_core::audio::{Engine, EngineConfig, SoundBank};
@@ -329,17 +332,19 @@ fn swap(engine: &mut Engine, banks: Vec<SoundBank>) -> Result<((), String), Stri
 /// A [`Shared`] like the service's, without a control thread, persistence or events.
 fn bare_shared(settings: Settings) -> Shared {
     let (tx, _rx) = mpsc::channel();
+    let tx = ControlTx::new(tx, Arc::new(Waker::default()));
     Shared::new(AppState::initial("selftest", settings), tx, Box::new(|_| {}), Box::new(|_, _| {}))
 }
 
 /// The gate the key hook checks, driven through the same [`Shared`] the commands use.
 fn gate() -> Result<((), String), String> {
     let shared = bare_shared(Settings::default());
+    let activity = Activity::new(Arc::new(Waker::default()));
     let sent = AtomicUsize::new(0);
     let press = || {
         let event =
             KeyEvent { key: Key::KeyA, action: KeyAction::Down, event_ns: 0, received_ns: 0 };
-        input::forward(shared.gate(), event, |_| {
+        input::forward(shared.gate(), &activity, event, |_| {
             sent.fetch_add(1, Ordering::Relaxed);
             true
         })
@@ -628,6 +633,8 @@ fn service_checks(
         bundled_dir: Some(bundled.to_path_buf()),
         user_dir: Some(user_dir.clone()),
         listen: false,
+        keys: KeySource::Os,
+        idle_unit: idle::MINUTE,
     };
     let Some(service) = report.check("service: start", || {
         let service = Service::start(config, Box::new(|_, _| {})).map_err(|e| e.to_string())?;
@@ -753,6 +760,12 @@ fn service_checks(
 
     hot_reload_checks(report, &service, bundled, packs, &user_dir, scratch, playback);
 
+    if playback {
+        idle_sleep_checks(report, bundled, scratch);
+    } else {
+        report.skip("service: idle sleep", "no audio output");
+    }
+
     report.check("service: imported Mechvibes pack is listed as personal", || {
         mechvibes_import(&service, &user_dir, scratch)
     });
@@ -785,6 +798,8 @@ fn retired_selection(
         bundled_dir: Some(bundled.to_path_buf()),
         user_dir: Some(scratch.join("retired-user-packs")),
         listen: false,
+        keys: KeySource::Os,
+        idle_unit: idle::MINUTE,
     };
     let started = Service::start(config, Box::new(|_, _| {})).map_err(|e| e.to_string())?;
     let migrated = wait_for(WAIT, || {
@@ -804,6 +819,176 @@ fn retired_selection(
         return Err(format!("saved {saved:?}"));
     }
     Ok(((), format!("{retired} → {saved}, no error, saved")))
+}
+
+/// The idle time in the idle-sleep checks: [`IDLE_MINUTES`] units of [`IDLE_UNIT`].
+const IDLE_UNIT: Duration = Duration::from_millis(100);
+const IDLE_MINUTES: u32 = 3;
+/// Sleep/wake cycles measured.
+const WAKE_CYCLES: usize = 7;
+
+/// Idle sleep end to end with the synthetic keyboard: the real gate, activity, trigger ring and
+/// control thread, without an OS hook or permission. The output closes after the idle time while
+/// the listener stays; a key-down reopens it and that key press plays (its latency sample is the
+/// wake latency); muting while asleep stops the listener; a preview while asleep opens the output
+/// and it sleeps again afterwards; `idleSleepMinutes` 0 keeps it open. Silent (master volume 0).
+fn idle_sleep_checks(report: &mut Report, bundled: &Path, scratch: &Path) {
+    let keys = Arc::new(input::SyntheticKeys::default());
+    let config = Config {
+        version: "selftest".into(),
+        settings: Settings {
+            master_volume: 0.0,
+            idle_sleep_minutes: IDLE_MINUTES,
+            ..Settings::default()
+        },
+        settings_path: scratch.join("idle").join(settings::FILE_NAME),
+        bundled_dir: Some(bundled.to_path_buf()),
+        user_dir: Some(scratch.join("idle-user-packs")),
+        listen: true,
+        keys: KeySource::Synthetic(keys.clone()),
+        idle_unit: IDLE_UNIT,
+    };
+    let idle_after = IDLE_UNIT * IDLE_MINUTES;
+    let Some(service) =
+        report.check("service: idle sleep closes the output, keeps listening", || {
+            let service = Service::start(config, Box::new(|_, _| {})).map_err(|e| e.to_string())?;
+            let ready = wait_for(WAIT, || {
+                service.output_open()
+                    && keys.listening()
+                    && service.now_playing().as_deref() == Some(DEFAULT_PACK_ID)
+            });
+            if !ready {
+                return Err(format!(
+                    "output open {}, listening {}, playing {:?}",
+                    service.output_open(),
+                    keys.listening(),
+                    service.now_playing()
+                ));
+            }
+            keys.press(KeyAction::Down);
+            keys.press(KeyAction::Up);
+            let typed = Instant::now();
+            if !wait_for(WAIT, || !service.output_open() && service.snapshot().audio_asleep) {
+                return Err("the output stayed open without typing".into());
+            }
+            let slept = typed.elapsed();
+            if slept < idle_after {
+                return Err(format!("asleep after {} (idle time {})", ms(slept), ms(idle_after)));
+            }
+            if !keys.listening() || !service.snapshot().playing {
+                return Err("asleep, but no longer listening or playing".into());
+            }
+            let detail = format!(
+                "asleep {} after the last key (idle time {}), still listening",
+                ms(slept),
+                ms(idle_after)
+            );
+            Ok((service, detail))
+        })
+    else {
+        return;
+    };
+
+    report.check("service: a key-down wakes the output and plays", || {
+        let mut wake = Vec::new();
+        let mut warm = Vec::new();
+        for _ in 0..WAKE_CYCLES {
+            if !wait_for(WAIT, || !service.output_open() && service.snapshot().audio_asleep) {
+                return Err("the output did not go back to sleep".into());
+            }
+            service.reset_latency();
+            let pressed = Instant::now();
+            keys.press(KeyAction::Down);
+            if !wait_for(WAIT, || service.output_open()) {
+                return Err("a key press did not reopen the output".into());
+            }
+            let opened = pressed.elapsed();
+            keys.press(KeyAction::Up);
+            if !wait_for(WAIT, || service.last_latency().is_some()) {
+                return Err(format!(
+                    "the waking key press never played (reopened in {})",
+                    ms(opened)
+                ));
+            }
+            wake.extend(service.last_latency());
+            // A second press while awake, for comparison.
+            service.reset_latency();
+            keys.press(KeyAction::Down);
+            keys.press(KeyAction::Up);
+            if wait_for(WAIT, || service.last_latency().is_some()) {
+                warm.extend(service.last_latency());
+            }
+        }
+        let summary = |samples: &[taktak_core::latency::LatencySample]| {
+            let mut queue: Vec<f64> = samples.iter().map(|s| s.queue_ns as f64 / 1e6).collect();
+            queue.sort_by(f64::total_cmp);
+            let output = samples.first().map_or(0.0, |s| s.output_ns as f64 / 1e6);
+            let median = queue.get(queue.len() / 2).copied().unwrap_or_default();
+            let max = queue.last().copied().unwrap_or_default();
+            (median, max, output)
+        };
+        let (wake_p50, wake_max, output) = summary(&wake);
+        let (warm_p50, _, _) = summary(&warm);
+        if service.snapshot().audio_asleep {
+            return Err("still reported asleep with the output open".into());
+        }
+        Ok((
+            (),
+            format!(
+                "{WAKE_CYCLES} wakes: key-down → first buffer p50 {wake_p50:.1} ms, max \
+                 {wake_max:.1} ms (awake: {warm_p50:.1} ms), + output {output:.1} ms"
+            ),
+        ))
+    });
+
+    report.check("service: muting while asleep stops the listener", || {
+        if !wait_for(WAIT, || service.snapshot().audio_asleep) {
+            return Err("never asleep".into());
+        }
+        service.update(|s| s.muted = true);
+        if !wait_for(WAIT, || !keys.listening() && !service.snapshot().audio_asleep) {
+            return Err("still listening (or asleep) while muted".into());
+        }
+        if service.output_open() {
+            return Err("muting opened the output".into());
+        }
+        service.update(|s| s.muted = false);
+        if !wait_for(WAIT, || service.output_open() && keys.listening()) {
+            return Err("unmuting did not reopen the output and the listener".into());
+        }
+        Ok(((), "listener off while muted; unmuting reopens both at once".into()))
+    });
+
+    report.check("service: a preview while asleep opens the output", || {
+        if !wait_for(WAIT, || !service.output_open() && service.snapshot().audio_asleep) {
+            return Err("never asleep".into());
+        }
+        service.preview(DEFAULT_PACK_ID)?.wait(WAIT)?;
+        if !service.output_open() {
+            return Err("the preview played without an open output".into());
+        }
+        let played = Instant::now();
+        if !wait_for(WAIT, || !service.output_open()) {
+            return Err("the output stayed open after the preview".into());
+        }
+        if !keys.listening() || !service.snapshot().audio_asleep {
+            return Err("not asleep and listening after the preview".into());
+        }
+        Ok(((), format!("asleep again {} after the clip started", ms(played.elapsed()))))
+    });
+
+    report.check("service: idleSleepMinutes 0 never sleeps", || {
+        service.update(|s| s.settings.idle_sleep_minutes = 0);
+        if !wait_for(WAIT, || service.output_open() && !service.snapshot().audio_asleep) {
+            return Err("turning idle sleep off did not reopen the output".into());
+        }
+        thread::sleep(idle_after * 2);
+        if !service.output_open() {
+            return Err("the output closed anyway".into());
+        }
+        Ok(((), format!("still open {} later", ms(idle_after * 2))))
+    });
+    service.shutdown(Duration::from_secs(3));
 }
 
 /// A preview opens the output (closed: nothing else can play without a key listener), plays
@@ -933,6 +1118,8 @@ fn hot_reload_checks(
             bundled_dir: Some(bundled.to_path_buf()),
             user_dir: Some(user_dir.to_path_buf()),
             listen: false,
+            keys: KeySource::Os,
+            idle_unit: idle::MINUTE,
         };
         let restarted = Service::start(config, Box::new(|_, _| {})).map_err(|e| e.to_string())?;
         let named = wait_for(WAIT, || {

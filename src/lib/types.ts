@@ -25,6 +25,12 @@ export interface Settings {
   appRule: AppRule;
   /** (M4) Auto-mute when the default output device changes; default false. */
   muteOnOutputChange: boolean;
+  /**
+   * Close the sound output after this many minutes without a key press (battery: an open output
+   * keeps the audio device awake); the next key press reopens it and plays. 0 = never; default 5,
+   * at most 1440.
+   */
+  idleSleepMinutes: number;
   /** (M4) The onboarding window was closed at least once; default false. */
   onboardingDone: boolean;
 }
@@ -161,6 +167,11 @@ export interface AppState {
   permission: Permission;
   audio: AudioStatus;
   /**
+   * The output is paused: no key went down for `settings.idleSleepMinutes`. The next key press
+   * reopens it and plays (a few tens of ms late). `playing` is unaffected.
+   */
+  audioAsleep: boolean;
+  /**
    * (M4) The app in front now, TakTak's own windows excluded; null when unknown, without a
    * bundle id, or when rules are unsupported. Current value only: never collect it into a history.
    */
@@ -255,6 +266,7 @@ export interface Commands {
   add_rule_app: { args: { id: string; name: string }; result: AppState };
   remove_rule_app: { args: { id: string }; result: AppState };
   set_mute_on_output_change: { args: { enabled: boolean }; result: AppState };
+  set_idle_sleep_minutes: { args: { minutes: number }; result: AppState };
   open_onboarding: { args: void; result: void };
   finish_onboarding: { args: void; result: AppState };
   relaunch: { args: void; result: void };

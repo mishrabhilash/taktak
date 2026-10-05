@@ -14,11 +14,16 @@
 //!   An open stream keeps the audio device awake, which costs `coreaudiod` 5–9 % of a core even
 //!   in silence. While they are closed, the playing pack stays decoded at the default device's
 //!   rate, so opening again takes only the ~0.1 s the device needs.
-//! - It sleeps until a message arrives or a poll is due: 4 Hz while the engine runs (stream
-//!   faults and reroutes → reopen on the new default device, xruns, hook re-enables, latency
-//!   samples, garbage), every 2 s for Input Monitoring while it is missing (10 s once granted),
-//!   every 2 s for an output device while one is needed and none opens, and every 5 s for the
-//!   default device while the output is closed.
+//! - Idle sleep ([`crate::idle`]): after `settings.idleSleepMinutes` without a key press the
+//!   output closes but the listener keeps running; the next key-down wakes this thread, which
+//!   reopens the output, and that key press plays in its first buffer (the trigger ring outlives
+//!   the stream: [`Engine::shutdown`], [`Engine::start_with`]).
+//! - It sleeps (`thread::park`) until a message arrives ([`ControlTx`] unparks it), the key hook
+//!   ends an idle sleep, or a poll is due: 4 Hz while the engine runs (stream faults and reroutes
+//!   → reopen on the new default device, xruns, hook re-enables, latency samples, garbage),
+//!   every 2 s for Input Monitoring while it is missing (10 s once granted), every 2 s for an
+//!   output device while one is needed and none opens, every 5 s for the default device while
+//!   the output is closed, and once when the idle time runs out.
 //! - Packs are decoded on `taktak-loader` ([`Loader`]); the control thread swaps the result in.
 //! - It also watches the default output device ([`DeviceWatch`]) for the `outputChanged`
 //!   auto-mute: every device it opens or looks at while the output is closed.
@@ -28,7 +33,8 @@
 
 use crate::automute::{self, DeviceWatch};
 use crate::catalog::{self, ActiveView, Reaction};
-use crate::input::{self, Permission as PermissionPoll};
+use crate::idle::{self, Activity, IdleSleep, Waker};
+use crate::input::{self, Hook, KeySource, Permission as PermissionPoll};
 use crate::loader::{BankJob, BankLoaded, Done, Loader, PreviewJob, PreviewLoaded};
 use crate::rules::{self, RuleBlock};
 use crate::settings::{self, PersistHandle, Persister};
@@ -38,14 +44,16 @@ use std::collections::VecDeque;
 use std::io;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender, TryRecvError};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 use taktak_core::audio::{
-    self as core_audio, DeviceInfo, Engine, EngineConfig, SoundBank, StreamFault, TriggerSender,
+    self as core_audio, DeviceInfo, Engine, EngineConfig, SoundBank, StreamFault, TriggerReceiver,
+    TriggerSender,
 };
-use taktak_core::input::{InputError, Listener};
+use taktak_core::clock;
+use taktak_core::input::InputError;
 use taktak_core::latency::{LatencySample, Report};
 use taktak_core::pack::registry::{self, Watcher};
 use taktak_core::pack::{self, PackError, PackInfo, PackRegistry, RegistryEvent};
@@ -83,6 +91,9 @@ const MIN_LATENCY_SAMPLES: usize = 5;
 const MAX_LATENCY_SAMPLES: usize = 1000;
 /// How often xruns are logged at most.
 const XRUN_LOG_INTERVAL: Duration = Duration::from_secs(10);
+/// Key presses older than this when the output (re)opens are dropped instead of played late
+/// (pressed during a fault's rebuild delay, or before an open that failed).
+const STALE_TRIGGER: Duration = Duration::from_millis(200);
 
 /// Why a preview cannot play: no output device opens.
 pub const NO_OUTPUT: &str = "No sound output is available right now.";
@@ -106,6 +117,27 @@ pub enum Msg {
     Registry(Vec<RegistryEvent>),
     Loader(Done),
     Shutdown,
+}
+
+/// Sends to the control thread and wakes it: it waits in `thread::park`, which the key hook can
+/// end too, without allocating ([`Activity::key_down`]).
+#[derive(Clone)]
+pub struct ControlTx {
+    tx: Sender<Msg>,
+    waker: Arc<Waker>,
+}
+
+impl ControlTx {
+    pub fn new(tx: Sender<Msg>, waker: Arc<Waker>) -> ControlTx {
+        ControlTx { tx, waker }
+    }
+
+    /// Queues `msg` and wakes the control thread; never blocks.
+    pub fn send(&self, msg: Msg) {
+        if self.tx.send(msg).is_ok() {
+            self.waker.wake();
+        }
+    }
 }
 
 /// Waits for the control thread to start a preview, or to say why it cannot.
@@ -244,7 +276,7 @@ pub struct Shared {
     latency: Mutex<VecDeque<LatencySample>>,
     /// Whether the output stream is open (diagnostics and the self-test).
     output_open: AtomicBool,
-    control: Sender<Msg>,
+    control: ControlTx,
     persist: Persist,
     notify: Notify,
 }
@@ -314,7 +346,7 @@ pub fn latency_report(samples: &[LatencySample]) -> Option<LatencyReport> {
 impl Shared {
     pub fn new(
         mut state: AppState,
-        control: Sender<Msg>,
+        control: ControlTx,
         persist: Persist,
         notify: Notify,
     ) -> Shared {
@@ -436,7 +468,7 @@ impl Shared {
             (self.persist)(inner.state.settings.clone());
         }
         if settings_changed || gate_changed || sounds_changed || blocked_changed {
-            let _ = self.control.send(Msg::Sync);
+            self.control.send(Msg::Sync);
         }
         inner.revision += 1;
         (self.notify)(inner.revision, &inner.state);
@@ -457,12 +489,17 @@ impl Shared {
 
     /// Asks the control thread to do something; never blocks.
     pub fn send(&self, msg: Msg) {
-        let _ = self.control.send(msg);
+        self.control.send(msg);
     }
 
     /// Keystroke-to-sound timings since [`Shared::reset_latency`], if enough were measured.
     pub fn latency(&self) -> Option<LatencyReport> {
         latency_report(lock(&self.latency).make_contiguous())
+    }
+
+    /// The most recent keystroke-to-sound timing (the self-test's wake-latency check).
+    pub fn last_latency(&self) -> Option<LatencySample> {
+        lock(&self.latency).back().copied()
     }
 
     /// Forgets the timings so far (the settings window just opened).
@@ -487,6 +524,11 @@ pub struct Config {
     pub user_dir: Option<PathBuf>,
     /// Listen to the keyboard (checking permission, never prompting). Off for the self-test.
     pub listen: bool,
+    /// Where key events come from while listening: the OS, or the self-test's keyboard (which
+    /// needs no permission).
+    pub keys: KeySource,
+    /// One `settings.idleSleepMinutes` unit: [`idle::MINUTE`] (the self-test shortens it).
+    pub idle_unit: Duration,
 }
 
 /// The running service: shared state, the settings writer and the control thread.
@@ -514,19 +556,22 @@ impl Service {
         )?;
         let persist: PersistHandle = persister.handle();
         let (tx, rx) = mpsc::channel();
+        let waker = Arc::new(Waker::default());
+        let tx = ControlTx::new(tx, waker.clone());
         let mut initial = AppState::initial(config.version, config.settings);
         initial.user_packs_dir = config.user_dir.as_ref().map(|d| d.display().to_string());
-        initial.onboarding.permission_required = permission_required(config.listen);
+        initial.onboarding.permission_required =
+            permission_required(config.listen && matches!(config.keys, KeySource::Os));
         let shared =
             Arc::new(Shared::new(initial, tx.clone(), Box::new(move |s| persist.save(s)), notify));
 
         let loader_tx = tx.clone();
-        let loader = Loader::spawn(move |done| {
-            let _ = loader_tx.send(Msg::Loader(done));
-        })?;
+        let loader = Loader::spawn(move |done| loader_tx.send(Msg::Loader(done)))?;
         let registry = PackRegistry::new(config.bundled_dir, config.user_dir);
-        let mut control = Control::new(shared.clone(), rx, tx, registry, loader);
+        let mut control = Control::new(shared.clone(), rx, tx, waker, registry, loader);
         control.hook_supported = config.listen;
+        control.keys = config.keys;
+        control.idle_unit = config.idle_unit;
         let thread =
             thread::Builder::new().name("taktak-control".into()).spawn(move || control.run())?;
         Ok(Service { shared, persister, control: Mutex::new(Some(thread)) })
@@ -601,12 +646,9 @@ impl Drop for Service {
     }
 }
 
-/// The output stream and what depends on it. Fields drop in order: the hook (which holds the
-/// trigger sender) stops before the engine does.
+/// The output stream and what depends on it. The key listener is not part of it: it keeps
+/// running while the output sleeps, feeding the trigger ring the next engine plays from.
 struct Audio {
-    listener: Option<Listener>,
-    /// Until a listener takes it (and with it, for good: a later listener needs a new engine).
-    sender: Option<TriggerSender>,
     metrics: Option<rtrb::Consumer<LatencySample>>,
     /// A bank the engine could not take yet (its command ring was full); retried every poll.
     pending_bank: Option<SoundBank>,
@@ -724,11 +766,34 @@ fn no_output_status() -> AudioStatus {
 struct Control {
     shared: Arc<Shared>,
     rx: Receiver<Msg>,
-    tx: Sender<Msg>,
+    tx: ControlTx,
+    /// Ends this thread's park (messages, and the key hook ending an idle sleep).
+    waker: Arc<Waker>,
     registry: Arc<Mutex<PackRegistry>>,
     watcher: Option<Watcher>,
     loader: Loader,
     audio: Option<Audio>,
+    /// The key listener, while a key press can make a sound and the output is open or asleep.
+    listener: Option<Hook>,
+    /// The sending end of a trigger ring no listener has taken yet (the next listener's, without
+    /// reopening the output). A listener keeps its sender for good: a new listener needs a new
+    /// ring, and a running engine must be reopened on it.
+    sender: Option<TriggerSender>,
+    /// The receiving end of the current trigger ring while no engine plays from it.
+    triggers: Option<TriggerReceiver>,
+    /// Where key events come from.
+    keys: KeySource,
+    /// When keys last went down, shared with the hook (idle sleep).
+    activity: Arc<Activity>,
+    idle: IdleSleep,
+    /// One `settings.idleSleepMinutes` unit.
+    idle_unit: Duration,
+    /// `settings.idleSleepMinutes` as last applied (a change restarts the idle time).
+    idle_minutes: u32,
+    /// [`Control::keys_wanted`] as of the last reconcile: becoming wanted restarts the idle time.
+    keys_were_wanted: bool,
+    /// When the current (or last) idle sleep began (`clock::now_ns`).
+    slept_at_ns: u64,
     next_poll: Instant,
     /// The rate packs are decoded at: the engine's, or while the output is closed, the default
     /// device's. `None` until an output device was found.
@@ -769,18 +834,32 @@ impl Control {
     fn new(
         shared: Arc<Shared>,
         rx: Receiver<Msg>,
-        tx: Sender<Msg>,
+        tx: ControlTx,
+        waker: Arc<Waker>,
         registry: PackRegistry,
         loader: Loader,
     ) -> Control {
+        let activity = Arc::new(Activity::new(waker.clone()));
+        let idle_minutes = shared.settings().idle_sleep_minutes;
         Control {
             shared,
             rx,
             tx,
+            waker,
             registry: Arc::new(Mutex::new(registry)),
             watcher: None,
             loader,
             audio: None,
+            listener: None,
+            sender: None,
+            triggers: None,
+            keys: KeySource::Os,
+            idle: IdleSleep::new(activity.clone(), clock::now_ns()),
+            activity,
+            idle_unit: idle::MINUTE,
+            idle_minutes,
+            keys_were_wanted: false,
+            slept_at_ns: 0,
             next_poll: Instant::now(),
             rate: None,
             parked: None,
@@ -803,6 +882,7 @@ impl Control {
     }
 
     fn run(mut self) {
+        self.waker.register_current();
         self.scan();
         self.migrate_retired_selection();
         self.watch();
@@ -814,21 +894,26 @@ impl Control {
         // After the first listener start too: a listener macOS refuses although the permission
         // looks granted also needs the onboarding (its troubleshooting).
         self.shared.mark_permission_checked();
-        loop {
-            let msg = match self.next_wake(Instant::now()) {
-                Some(at) => self.rx.recv_timeout(at.saturating_duration_since(Instant::now())),
-                None => self.rx.recv().map_err(|_| RecvTimeoutError::Disconnected),
-            };
-            match msg {
-                Ok(Msg::Shutdown) | Err(RecvTimeoutError::Disconnected) => break,
-                Ok(msg) => self.handle(msg, Instant::now()),
-                Err(RecvTimeoutError::Timeout) => {}
+        'run: loop {
+            loop {
+                match self.rx.try_recv() {
+                    Ok(Msg::Shutdown) | Err(TryRecvError::Disconnected) => break 'run,
+                    Ok(msg) => self.handle(msg, Instant::now()),
+                    Err(TryRecvError::Empty) => break,
+                }
             }
             let now = Instant::now();
             self.rule_block.observe(self.shared.rule_blocked(), now);
             self.tick(now);
             self.reconcile(now);
+            // A message or the key hook unparks this thread; a token left by one that came in
+            // since the queue was drained makes this park return at once.
+            match self.next_wake(Instant::now()) {
+                Some(at) => thread::park_timeout(at.saturating_duration_since(Instant::now())),
+                None => thread::park(),
+            }
         }
+        self.listener = None;
         log::debug!("control thread stopped");
     }
 
@@ -846,8 +931,25 @@ impl Control {
                 self.hook_supported.then(|| self.permission.next_check()),
                 // Once, to close the output when a rule block has lasted long enough.
                 self.audio.as_ref().and(self.rule_block.settles_at()),
+                // Once, to close the output when nobody has typed for the idle time.
+                self.audio
+                    .as_ref()
+                    .filter(|_| self.keys_were_wanted)
+                    .and_then(|_| self.idle_deadline(now)),
             ],
         )
+    }
+
+    /// The idle time (`settings.idleSleepMinutes`), `None` = never sleep.
+    fn idle_after(&self) -> Option<Duration> {
+        idle::idle_after(self.idle_minutes, self.idle_unit)
+    }
+
+    /// When the output goes to sleep unless a key goes down before, while keys keep it open.
+    fn idle_deadline(&self, now: Instant) -> Option<Instant> {
+        let deadline = self.idle.deadline_ns(self.idle_after())?;
+        let now_ns = clock::now_ns();
+        Some(now + Duration::from_nanos(deadline.saturating_sub(now_ns)))
     }
 
     fn tick(&mut self, now: Instant) {
@@ -898,9 +1000,11 @@ impl Control {
         )
     }
 
-    /// Whether the output stream should be open: for key sounds or a preview.
+    /// Whether the output stream should be open: for key sounds (unless it sleeps for want of
+    /// typing) or a preview.
     fn needs_output(&self, now: Instant) -> bool {
-        self.keys_wanted(now) || self.preview_until.is_some_and(|until| now < until)
+        (self.keys_wanted(now) && !self.idle.asleep())
+            || self.preview_until.is_some_and(|until| now < until)
     }
 
     /// Opens or closes the output and the key listener for what is needed now.
@@ -908,27 +1012,53 @@ impl Control {
         if self.preview_until.is_some_and(|until| now >= until) {
             self.preview_until = None;
         }
+        let keys = self.keys_wanted(now);
+        let now_ns = clock::now_ns();
+        if keys && !self.keys_were_wanted {
+            // Sounds just came on (unmuted, permission granted, …): a full idle time from here.
+            self.idle.touch(now_ns);
+        }
+        self.keys_were_wanted = keys;
+        let was_asleep = self.idle.asleep();
+        let asleep = self.idle.update(keys, self.idle_after(), now_ns);
+        if asleep != was_asleep {
+            self.shared.update(|s| s.audio_asleep = asleep);
+        }
+        // Woken by a key press (not by sounds going off or the setting changing).
+        let key_ns = self.activity.last_key_ns();
+        let woken = was_asleep && !asleep && keys && key_ns >= self.slept_at_ns;
         if self.audio.is_none()
             && self.needs_output(now)
             && self.rebuild_at.is_none_or(|at| now >= at)
         {
             self.start_audio(now);
-        }
-        if self.audio.is_some() {
-            if self.keys_wanted(now) {
-                self.ensure_listener(now);
-            } else if let Some(audio) = &mut self.audio
-                && audio.listener.take().is_some()
-            {
-                log::info!("stopped listening to the keyboard");
+            if woken && self.audio.is_some() {
+                // Timing only: how long that key press waited for the output to run.
+                let waited = clock::now_ns().saturating_sub(key_ns);
+                log::info!(
+                    "audio output reopened for a key press after an idle sleep, {:.1} ms after \
+                     the key went down",
+                    waited as f64 / 1e6
+                );
             }
+        }
+        if keys && (self.audio.is_some() || asleep) {
+            self.ensure_listener(now);
+        } else if !keys && self.listener.take().is_some() {
+            // Its ring dies with it: the next listener gets a new one.
+            self.triggers = None;
+            log::info!("stopped listening to the keyboard");
         }
         if self.needs_output(now) {
             return;
         }
         self.rebuild_at = None;
         if self.audio.is_some() {
-            self.stop_audio(now);
+            if asleep && self.preview_until.is_none() {
+                self.sleep_audio(now);
+            } else {
+                self.stop_audio(now);
+            }
         } else if self.idle_refresh_at.is_none() {
             self.refresh_idle(now);
         }
@@ -970,7 +1100,7 @@ impl Control {
     fn watch(&mut self) {
         let tx = self.tx.clone();
         match registry::watch(self.registry.clone(), move |events| {
-            let _ = tx.send(Msg::Registry(events));
+            tx.send(Msg::Registry(events));
         }) {
             Ok(watcher) => self.watcher = Some(watcher),
             Err(e) => log::warn!("pack hot reload is off: {e}"),
@@ -1174,6 +1304,10 @@ impl Control {
         if let Some(audio) = &self.audio {
             apply_settings(&audio.engine, &settings);
         }
+        if settings.idle_sleep_minutes != self.idle_minutes {
+            self.idle_minutes = settings.idle_sleep_minutes;
+            self.idle.touch(clock::now_ns());
+        }
         if self.active.requested.as_deref() != Some(settings.pack_id.as_str()) {
             self.request_bank();
         }
@@ -1194,10 +1328,32 @@ impl Control {
         };
         let mut parked = self.parked.take();
         let had_bank = parked.is_some();
-        let started = Engine::start(config, |rate| unpark(&mut parked, rate).unwrap_or_default());
-        let (mut engine, sender) = match started {
-            Ok(started) => started,
-            Err(e) => {
+        let mut triggers = match self.triggers.take() {
+            Some(triggers) => triggers,
+            None => {
+                // No ring yet (or it was lost): the listener, if any, feeds nothing any more.
+                let (sender, receiver) = core_audio::trigger_ring();
+                if self.listener.take().is_some() {
+                    log::debug!("restarting the keyboard hook on a new trigger ring");
+                }
+                self.sender = Some(sender);
+                receiver
+            }
+        };
+        let stale = triggers
+            .discard_before(clock::now_ns().saturating_sub(STALE_TRIGGER.as_nanos() as u64));
+        if stale > 0 {
+            log::debug!("dropped {stale} key event(s) too old to play");
+        }
+        let started = Engine::start_with(
+            config,
+            |rate| unpark(&mut parked, rate).unwrap_or_default(),
+            triggers,
+        );
+        let mut engine = match started {
+            Ok(engine) => engine,
+            Err((e, triggers)) => {
+                self.triggers = Some(triggers);
                 self.parked = parked;
                 log::warn!("cannot open the audio output: {e}");
                 self.rebuild_at = Some(now + RETRY);
@@ -1217,13 +1373,7 @@ impl Control {
             info.buffer_frames.map_or("device default".to_owned(), |f| f.to_string())
         );
         self.rate = Some(info.sample_rate);
-        self.audio = Some(Audio {
-            listener: None,
-            sender: Some(sender),
-            metrics,
-            pending_bank: None,
-            engine,
-        });
+        self.audio = Some(Audio { metrics, pending_bank: None, engine });
         self.shared.output_open.store(true, Ordering::Relaxed);
         self.rebuild_at = None;
         self.output_missing = false;
@@ -1244,19 +1394,35 @@ impl Control {
         }
     }
 
-    /// Closes the listener and the output, parking the bank they played (if the callback hands
-    /// it back within `timeout`) for the next open.
+    /// Closes the output, parking the bank it played (if the callback hands it back within
+    /// `timeout`) for the next open, and keeping the trigger ring for the listener (which keeps
+    /// running).
     fn close_audio(&mut self, timeout: Duration) {
         let Some(mut audio) = self.audio.take() else { return };
-        audio.listener = None;
+        // Timings measured since the last poll (a key press that woke the output, say).
+        if let Some(metrics) = &mut audio.metrics
+            && !metrics.is_empty()
+        {
+            let batch: Vec<LatencySample> = std::iter::from_fn(|| metrics.pop().ok()).collect();
+            self.shared.push_latency(&batch);
+        }
         let rate = audio.engine.info().sample_rate;
-        let bank = match audio.pending_bank.take() {
-            // Newer than the bank the engine plays.
-            Some(bank) => Some(bank),
-            None => audio.engine.stop(timeout),
-        };
-        if let Some(bank) = bank {
+        let pending = audio.pending_bank.take();
+        let stopped = audio.engine.shutdown(timeout);
+        // A pending bank is newer than the one the engine played.
+        if let Some(bank) = pending.or(stopped.bank) {
             self.parked = Some(Parked { rate, bank });
+        }
+        match stopped.triggers {
+            Some(triggers) => self.triggers = Some(triggers),
+            None => {
+                // The backend kept the callback (and the ring's receiving end): start over.
+                self.triggers = None;
+                self.sender = None;
+                if self.listener.take().is_some() {
+                    log::debug!("the trigger ring did not come back; restarting the keyboard hook");
+                }
+            }
         }
         self.shared.output_open.store(false, Ordering::Relaxed);
     }
@@ -1266,6 +1432,20 @@ impl Control {
         self.close_audio(STOP_TIMEOUT);
         self.pending_preview = None;
         log::info!("audio output closed until something can play");
+        self.refresh_idle(now);
+    }
+
+    /// Closes the output because nobody typed for the idle time; the listener keeps running and
+    /// the next key-down reopens it.
+    fn sleep_audio(&mut self, now: Instant) {
+        self.slept_at_ns = clock::now_ns();
+        self.close_audio(STOP_TIMEOUT);
+        self.pending_preview = None;
+        let after = self.idle_after().unwrap_or_default();
+        log::info!(
+            "audio output paused after {} without a key press; the next key press reopens it",
+            idle::describe(after)
+        );
         self.refresh_idle(now);
     }
 
@@ -1316,7 +1496,7 @@ impl Control {
             self.reroute_at = Some(now + REBUILD_DELAY);
         }
         self.xruns.add(audio.engine.take_xruns(), now);
-        if let Some(n) = audio.listener.as_ref().map(Listener::take_reenabled).filter(|&n| n > 0) {
+        if let Some(n) = self.listener.as_ref().map(Hook::take_reenabled).filter(|&n| n > 0) {
             log::warn!("the system paused the keyboard hook {n} time(s); it was re-enabled");
         }
         if let Some(metrics) = &mut audio.metrics
@@ -1359,7 +1539,12 @@ impl Control {
     fn poll_permission(&mut self, now: Instant) {
         let first = self.permission.first();
         let was = self.permission.granted();
-        let granted = self.permission.check(now, taktak_core::input::has_permission);
+        let has: fn() -> bool = match self.keys {
+            KeySource::Os => taktak_core::input::has_permission,
+            // The self-test's keyboard needs no permission.
+            KeySource::Synthetic(_) => || true,
+        };
+        let granted = self.permission.check(now, has);
         let said = if granted { "granted" } else { "not granted" };
         if first && cfg!(target_os = "macos") {
             log::info!("Input Monitoring: {said}");
@@ -1369,29 +1554,48 @@ impl Control {
         self.publish_permission();
     }
 
-    /// Starts the key listener on the running engine if none runs. A listener takes the
-    /// engine's trigger sender for good, so a second one needs a new engine.
+    /// Starts the key listener if none runs, on the current trigger ring if no listener has
+    /// taken its sender yet. A listener keeps its sender for good, so a second one needs a new
+    /// ring, and a running engine is reopened to play from it.
     fn ensure_listener(&mut self, now: Instant) {
-        if self.audio.as_ref().is_none_or(|audio| audio.listener.is_some()) {
+        if self.listener.is_some() {
             return;
         }
-        if self.audio.as_ref().is_some_and(|audio| audio.sender.is_none()) {
-            log::debug!("reopening the audio output for a new keyboard hook");
-            self.restart_audio(now);
-        }
-        let Some(sender) = self.audio.as_mut().and_then(|audio| audio.sender.take()) else {
-            return;
+        let sender = match self.sender.take() {
+            Some(sender) => sender,
+            None => {
+                let (sender, receiver) = core_audio::trigger_ring();
+                if self.audio.is_some() {
+                    log::debug!("reopening the audio output for a new keyboard hook");
+                    self.close_audio(STOP_TIMEOUT);
+                    self.triggers = Some(receiver);
+                    self.start_audio(now);
+                } else {
+                    self.triggers = Some(receiver);
+                }
+                sender
+            }
         };
-        match input::start_listener(self.shared.gate().clone(), sender) {
+        let started = input::start_listener(
+            &self.keys,
+            self.shared.gate().clone(),
+            self.activity.clone(),
+            sender,
+        );
+        match started {
             Ok(listener) => {
                 log::info!("listening to the keyboard");
-                if let Some(audio) = &mut self.audio {
-                    audio.listener = Some(listener);
-                }
+                self.listener = Some(listener);
                 self.hook_retry_at = None;
                 self.hook_refused = false;
             }
-            Err(e) => self.on_hook_error(&e, now),
+            Err(e) => {
+                // Its sender went with it: the ring is dead.
+                if self.audio.is_none() {
+                    self.triggers = None;
+                }
+                self.on_hook_error(&e, now);
+            }
         }
         self.publish_permission();
     }
@@ -1469,7 +1673,7 @@ mod tests {
         });
         let shared = Shared::new(
             state,
-            tx,
+            ControlTx::new(tx, Arc::new(Waker::default())),
             Box::new(move |settings| s.lock().unwrap().push(settings)),
             Box::new(move |rev, state| n.lock().unwrap().push((rev, state.clone()))),
         );
