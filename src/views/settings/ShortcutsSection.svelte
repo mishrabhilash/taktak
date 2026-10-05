@@ -6,7 +6,8 @@
 
   let { s }: { s: AppState } = $props();
 
-  // macOS registers key positions, and WKWebView can't say what the layout puts on them.
+  // macOS registers key positions; without the app's (or the webview's) layout labels, names
+  // follow the US layout.
   const usPositions = $derived(platform === 'mac' && !keyboardLayout.labels);
 </script>
 

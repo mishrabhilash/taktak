@@ -24,6 +24,7 @@ pub mod idle;
 pub mod input;
 #[cfg(target_os = "macos")]
 pub mod instance;
+pub mod keylabels;
 pub mod loader;
 pub mod logging;
 pub mod mechvibes;
@@ -173,6 +174,7 @@ pub fn run() {
             commands::remove_rule_app,
             commands::set_mute_on_output_change,
             commands::set_idle_sleep_minutes,
+            commands::key_labels,
             commands::open_onboarding,
             commands::finish_onboarding,
             commands::relaunch,
@@ -198,6 +200,7 @@ pub fn run() {
         RunEvent::Exit => {
             windows::mark_exiting();
             apps::stop_observing();
+            keylabels::stop_watching();
             if let Some(service) = app.try_state::<Service>() {
                 service.shutdown(SHUTDOWN_TIMEOUT);
             }
@@ -298,6 +301,12 @@ fn setup<R: Runtime>(
     }
 
     observe_system(&service);
+    let labels_app = app.clone();
+    keylabels::watch(move |labels| {
+        if let Err(e) = labels_app.emit(keylabels::CHANGED, labels) {
+            log::warn!("cannot send the new key labels: {e}");
+        }
+    });
     open_onboarding_when_due(app, service.handle(), reopen_onboarding);
 
     let state = service.snapshot();

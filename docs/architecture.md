@@ -274,6 +274,10 @@ into a pack folder in the format above; the format details and quirks are in
   never `vkCode`, `ToUnicode`/`ToUnicodeEx`; on Linux: key codes only, no keysyms or XKB).
   The hooks are listen-only: the Windows hook always calls `CallNextHookEx`, evdev devices
   are never grabbed.
+- The one layout API TakTak uses, `UCKeyTranslate` with the current input source
+  (`src-tauri/src/keylabels.rs`, macOS, main thread), translates a fixed list of 47 key
+  positions so Settings can label the mute hotkey as the user's keyboard prints it. It never
+  sees a typed key, and its output is neither logged nor stored.
 - `Key`'s `Debug` prints `Key(<redacted>)`, so key identities cannot leak into logs by accident.
 - No networking code or networking crates. CI enforces it (`npm run no-network`,
   `scripts/no-network.mjs`): no networking crate in any desktop dependency tree, no `std::net`

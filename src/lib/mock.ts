@@ -27,6 +27,9 @@
 //                 keyboard devices (inputGroupNeeded), no per-app rules
 //   listenerfail  Windows or Linux whose key listener failed to start (relaunchSuggested without
 //                 a permission step); `relaunch` fixes it after 1.5 s
+// Later:
+//   idle          the output is asleep (audioAsleep) until muting or set_idle_sleep_minutes
+//   azerty        key_labels answers like a Mac set to French AZERTY (hotkeys show "⌥⇧⌘,")
 // "Import Mechvibes pack…" answers in turn: an import (the pack is listed 0.7 s later), the
 // same pack again (alreadyImported; overwrite_mechvibes_pack replaces it), a pack with no usable
 // sounds (rejected), and a cancelled picker (null).
@@ -87,6 +90,24 @@ const DEFAULT_SETTINGS: Settings = {
   muteOnOutputChange: false,
   idleSleepMinutes: 5,
   onboardingDone: false,
+};
+
+/** What `key_labels` answers with ?scenario=azerty: French AZERTY, base layer. */
+const AZERTY_LABELS: Record<string, string> = {
+  KeyA: 'q',
+  KeyQ: 'a',
+  KeyW: 'z',
+  KeyZ: 'w',
+  KeyM: ',',
+  Semicolon: 'm',
+  Comma: ';',
+  Period: ':',
+  Slash: '=',
+  Digit1: '&',
+  Digit2: 'é',
+  Digit3: '"',
+  Minus: ')',
+  BracketLeft: '^',
 };
 
 /** The longest `idleSleepMinutes` (a day). */
@@ -626,6 +647,9 @@ export function createMockBackend(
       if (next === rule) return snapshot();
       return change((s) => (s.settings.appRule = next));
     },
+    // Like a Mac with French AZERTY under ?scenario=azerty; otherwise "cannot tell" (the UI
+    // then asks the browser's Keyboard Map API, or names the US keys).
+    key_labels: () => (scenarios.has('azerty') ? { ...AZERTY_LABELS } : null),
     set_idle_sleep_minutes: ({ minutes }) =>
       change((s) => {
         s.settings.idleSleepMinutes = Number.isFinite(minutes)
@@ -699,6 +723,10 @@ export function createMockBackend(
     async onStateChanged(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
+    },
+    // The mock never switches keyboard layouts.
+    async onKeyLabelsChanged() {
+      return () => {};
     },
   };
 }

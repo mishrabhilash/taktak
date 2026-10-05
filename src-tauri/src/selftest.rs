@@ -207,6 +207,11 @@ pub fn run(version: &str, resource_dir: Option<PathBuf>, args: &[String]) -> i32
     report.check("per-app rules (only, never, unknown app)", app_rules);
     report.check("auto-mute (lock, session, output change)", auto_mute);
     report.check("onboarding decision", onboarding);
+    if cfg!(target_os = "macos") {
+        report.check("hotkey labels from the keyboard layout", key_labels);
+    } else {
+        report.skip("hotkey labels from the keyboard layout", "macOS only");
+    }
     report.check("settings persist and reload", || persist(&scratch));
     report.check("settings corrupt-file recovery", || recover(&scratch));
     report.check("settings migration (Milestone 3 file)", || migrate(&scratch));
@@ -373,6 +378,34 @@ fn gate() -> Result<((), String), String> {
         return Err("not playing with everything on".into());
     }
     Ok(((), format!("4 combinations, {} event(s) forwarded", sent.load(Ordering::Relaxed))))
+}
+
+/// The current layout's labels for the hotkey key positions (macOS, on the main thread): every
+/// letter at least, each a short visible text.
+fn key_labels() -> Result<((), String), String> {
+    let labels = crate::keylabels::read_now().ok_or("the keyboard layout could not be read")?;
+    let letters = labels.keys().filter(|k| k.starts_with("Key")).count();
+    if letters < 26 {
+        return Err(format!("only {letters} letters labelled"));
+    }
+    if let Some((key, label)) = labels.iter().find(|(_, l)| l.chars().count() > 4) {
+        return Err(format!("{key} has the label {label:?}"));
+    }
+    let m = labels.get("KeyM").map_or("?", String::as_str);
+    // French AZERTY, read without selecting it: the US M position prints ",", Q prints "a".
+    let french = crate::keylabels::read_installed("com.apple.keylayout.French")
+        .ok_or("the French layout could not be read")?;
+    let (fm, fq) = (french.get("KeyM"), french.get("KeyQ"));
+    if fm.map(String::as_str) != Some(",") || fq.map(String::as_str) != Some("a") {
+        return Err(format!("French: M position {fm:?}, Q position {fq:?}"));
+    }
+    Ok((
+        (),
+        format!(
+            "current layout: {} keys, the M position prints {m:?}; French: M → \",\", Q → \"a\"",
+            labels.len()
+        ),
+    ))
 }
 
 /// Per-app rules through [`Shared`]: which frontmost app is silenced in each mode, and that a

@@ -567,6 +567,15 @@ describe('mock backend', () => {
     expect(off.audioAsleep).toBe(false);
   });
 
+  it('key_labels: null by default, French AZERTY with scenario "azerty"', async () => {
+    const plain = setup();
+    expect(await plain.call(plain.backend.call('key_labels', undefined))).toBeNull();
+    const fr = setup('?scenario=azerty');
+    const labels = await fr.call(fr.backend.call('key_labels', undefined));
+    expect(labels?.KeyM).toBe(',');
+    expect(labels?.KeyQ).toBe('a');
+  });
+
   it('hands out copies, so callers cannot change its state', async () => {
     const { backend, call } = setup();
     const s = await call(backend.call('get_state', undefined));

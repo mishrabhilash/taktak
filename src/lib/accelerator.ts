@@ -7,8 +7,8 @@
 // - macOS: a key position (a virtual key code, named after the US layout). "M" is the key
 //   right of N on a US keyboard, which types "," on French AZERTY. The recorder uses
 //   `KeyboardEvent.code`, the same position. Labels show the layout's character for that
-//   position when the webview can tell (keyboard.svelte.ts); otherwise they name the US key
-//   and say so (`namesUsPosition`).
+//   position when the app (`key_labels`, UCKeyTranslate) or the webview can tell
+//   (keyboard.svelte.ts); otherwise they name the US key and say so (`namesUsPosition`).
 // - Windows: a virtual-key code, which follows the layout ("M" is the key that types M). The
 //   recorder takes letters, digits and punctuation from the press's virtual-key code
 //   (`keyCode`), so the key pressed is the key registered.
@@ -323,7 +323,7 @@ export function describeAccelerator(
 /**
  * True when the label of the accelerator's key names a US key position the user's layout may
  * label differently: macOS (positional hotkeys), a letter, digit or punctuation key, and no
- * layout map from the webview (WKWebView has none).
+ * layout map (neither the app's `key_labels` nor the webview's Keyboard Map API).
  */
 export function namesUsPosition(
   accelerator: string,

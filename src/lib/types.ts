@@ -267,6 +267,11 @@ export interface Commands {
   remove_rule_app: { args: { id: string }; result: AppState };
   set_mute_on_output_change: { args: { enabled: boolean }; result: AppState };
   set_idle_sleep_minutes: { args: { minutes: number }; result: AppState };
+  /**
+   * macOS: the current layout's label per `KeyboardEvent.code` for the letter, digit and
+   * punctuation key positions a hotkey can name; null elsewhere or when it cannot be read.
+   */
+  key_labels: { args: void; result: Record<string, string> | null };
   open_onboarding: { args: void; result: void };
   finish_onboarding: { args: void; result: AppState };
   relaunch: { args: void; result: void };
@@ -283,4 +288,6 @@ export type CommandResult<C extends Command> = Commands[C]['result'];
 /** Events the app emits, with their payloads. */
 export interface Events {
   'state-changed': AppState;
+  /** macOS: the user switched keyboard layout; the new `key_labels` answer. */
+  'key-labels-changed': Record<string, string> | null;
 }

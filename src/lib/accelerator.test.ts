@@ -329,3 +329,18 @@ describe('recordKey', () => {
     expect(result).toEqual({ kind: 'accelerator', accelerator: 'CommandOrControl+A' });
   });
 });
+
+describe('labels from the app’s key_labels', () => {
+  it('formats the default hotkey with the layout the app reports, and drops the US note', async () => {
+    const { labelsFromRecord } = await import('./keyboard.svelte');
+    const qwertz = labelsFromRecord({ KeyY: 'z', KeyZ: 'y', KeyM: 'm', Semicolon: 'ö' });
+    expect(formatAccelerator('Alt+Y', 'mac', qwertz)).toBe('⌥Z');
+    expect(formatAccelerator('Alt+Semicolon', 'mac', qwertz)).toBe('⌥Ö');
+    expect(formatAccelerator(DEFAULT, 'mac', qwertz)).toBe('⌥⇧⌘M');
+    expect(namesUsPosition(DEFAULT, 'mac', qwertz)).toBe(false);
+    // Keys the app did not label keep their US names.
+    expect(formatAccelerator('Alt+Quote', 'mac', qwertz)).toBe("⌥'");
+    // No answer (Windows, Linux, or an unreadable layout): US names, and the note.
+    expect(namesUsPosition(DEFAULT, 'mac', labelsFromRecord(null))).toBe(true);
+  });
+});

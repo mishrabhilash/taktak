@@ -24,6 +24,7 @@ import type {
 export interface Backend {
   call<C extends Command>(command: C, args: CommandArgs<C>): Promise<CommandResult<C>>;
   onStateChanged(listener: (state: AppState) => void): Promise<() => void>;
+  onKeyLabelsChanged(listener: (labels: Record<string, string> | null) => void): Promise<() => void>;
 }
 
 /** True inside the Tauri webview, false in a plain browser. */
@@ -33,6 +34,8 @@ export const isTauri: boolean =
 const tauriBackend: Backend = {
   call: (command, args) => invoke(command, args as InvokeArgs | undefined),
   onStateChanged: (listener) => listen<AppState>('state-changed', (e) => listener(e.payload)),
+  onKeyLabelsChanged: (listener) =>
+    listen<Record<string, string> | null>('key-labels-changed', (e) => listener(e.payload)),
 };
 
 /** False in `tauri build` output, so the shipped app carries no mock code or mock data. */
@@ -60,6 +63,13 @@ async function call<C extends Command>(
 /** Calls `listener` with every `state-changed` payload. Resolves to an unsubscribe function. */
 export async function onStateChanged(listener: (state: AppState) => void): Promise<() => void> {
   return (await backend()).onStateChanged(listener);
+}
+
+/** Calls `listener` with every `key-labels-changed` payload (macOS layout switches). */
+export async function onKeyLabelsChanged(
+  listener: (labels: Record<string, string> | null) => void,
+): Promise<() => void> {
+  return (await backend()).onKeyLabelsChanged(listener);
 }
 
 /**
@@ -140,6 +150,11 @@ export const setMuteOnOutputChange = (enabled: boolean): Promise<AppState> =>
 export const setIdleSleepMinutes = (minutes: number): Promise<AppState> =>
   call('set_idle_sleep_minutes', { minutes });
 export const openOnboarding = (): Promise<void> => call('open_onboarding');
+/**
+ * macOS: what the current keyboard layout prints on each letter, digit and punctuation key
+ * position (by `KeyboardEvent.code`), for labelling hotkeys; null elsewhere.
+ */
+export const getKeyLabels = (): Promise<Record<string, string> | null> => call('key_labels');
 /** Marks the onboarding done and closes its window. */
 export const finishOnboarding = (): Promise<AppState> => call('finish_onboarding');
 /** Quits and starts TakTak again (the promise never settles in the app). */

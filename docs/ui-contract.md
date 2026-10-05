@@ -252,6 +252,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 | `add_rule_app` **(M4)** | `{ id: string; name: string }` | Appends `{ id, name }` to `settings.appRule.apps`. Both are trimmed; an empty name becomes the id. An id that is already listed changes nothing (no error, the entry keeps its fields). Rejects an empty id, one longer than 255 characters or containing whitespace or control characters ("That is not an app TakTak can recognize."), TakTak's own id `tech.taktak.app` ("TakTak itself can't be listed: its windows always follow the app you were in."), and a 201st entry ("You can list up to 200 apps."). Persisted. |
 | `remove_rule_app` **(M4)** | `{ id: string }` | Removes that entry; an id that is not listed changes nothing. Persisted. |
 | `set_mute_on_output_change` **(M4)** | `{ enabled: boolean }` | Persisted. `false` also clears an `outputChanged` auto-mute. |
+| `key_labels` | — | Returns `Record<string, string> \| null`: macOS, the current layout's label per hotkey key position; `null` on Windows and Linux. See "Hotkey keys and keyboard layouts". |
 | `set_idle_sleep_minutes` | `{ minutes: number }` | Rounded to whole minutes and clamped to 0..1440 (non-finite → 5). Persisted. A change restarts the idle time; 0 (or any change while asleep) reopens a sleeping output. |
 | `open_onboarding` **(M4)** | — | Shows/creates the onboarding window (activating TakTak). Returns `void`. Async (window creation off the main thread). |
 | `finish_onboarding` **(M4)** | — | Sets `settings.onboardingDone = true` (persisted), then closes the onboarding window if it is open. Returns the new `AppState`. |
@@ -264,6 +265,7 @@ All return `Promise<AppState>` unless noted, and reject with a user-facing strin
 
 | Event | Payload | When |
 |---|---|---|
+| `key-labels-changed` | `Record<string, string> \| null` | macOS: the user switched keyboard layout and the hotkey labels changed (the new `key_labels` answer). |
 | `state-changed` | `AppState` | After any change: commands, tray menu actions, hotkey, pack hot-reload, permission granted, audio fault/recovery, pack load finished, the output going to sleep or waking (`audioAsleep`). **(M4)** Also: the frontmost app changes (event-driven, never polled), the screen locks or unlocks, the session becomes inactive or active, an auto-mute starts or clears, the onboarding window closes. |
 
 ## Behaviour rules
@@ -589,13 +591,31 @@ means depends on how the global-shortcut plugin registers it:
 | Linux (X11) | the key that **types** the token's character | `keyCode` for letters; `code` for the rest |
 
 So the default `CommandOrControl+Alt+Shift+M` is the M key on Windows and Linux, and the US M
-position on macOS. On macOS the UI labels letter, digit and punctuation keys with the current
-layout's character for that position when the webview exposes the Keyboard Map API
-(`navigator.keyboard.getLayoutMap()`, read in `src/lib/keyboard.svelte.ts`). WKWebView does
-not, so in the app the labels name the US key, the keycaps' tooltip says so, and Settings →
-Shortcuts explains it. Showing the right character there needs the app to translate key codes
-with the current input source (e.g. `UCKeyTranslate`) and pass the labels to the UI; that is
-not part of this contract yet.
+position on macOS. On macOS the UI labels letter, digit and punctuation keys with what the
+current layout prints on that position:
+
+- **`key_labels`** (command, no args) returns `Record<string, string> | null`: for each of the 47
+  key positions a hotkey can name whose character depends on the layout (`KeyA`–`KeyZ`,
+  `Digit0`–`Digit9`, `Minus`, `Equal`, `BracketLeft`, `BracketRight`, `Backslash`,
+  `Semicolon`, `Quote`, `Comma`, `Period`, `Slash`, `Backquote`), the label the current
+  keyboard layout prints there: base layer, no modifiers, a dead key as its own sign (`^`).
+  Keys whose label is not visible text are left out. The app reads it with
+  `TISCopyCurrentKeyboardLayoutInputSource` and `UCKeyTranslate` on the main thread at startup
+  (input methods without a key layout of their own, such as Japanese, use their ASCII-capable
+  layout); `null` on Windows and Linux (the token is the character there already) and when the
+  layout cannot be read. E.g. French AZERTY: `{ KeyM: ",", KeyQ: "a", Semicolon: "m", … }`, so
+  the default hotkey shows as ⌥⇧⌘, (the UI upper-cases letters).
+- **`key-labels-changed`** (event, payload as `key_labels`): sent when the user switches input
+  source (the distributed notification `kTISNotifySelectedKeyboardInputSourceChanged`, delivered
+  immediately; nothing polls), if the labels changed.
+- The UI (`src/lib/keyboard.svelte.ts`) uses `key_labels` and the event; when they answer
+  `null` it falls back to the webview's Keyboard Map API (`navigator.keyboard.getLayoutMap()`,
+  Chromium only: in practice the browser during development), and without either it names the
+  US keys, the keycaps' tooltip says so and Settings → Shortcuts shows its "named as on a US
+  keyboard" footnote. With labels, that footnote and the tooltip note are gone.
+- Privacy: this translates a fixed list of key positions for display only. It never sees or
+  translates what the user types, and nothing is logged or stored; the key hook still calls no
+  layout or character API.
 
 ## Where things live
 
@@ -606,7 +626,9 @@ not part of this contract yet.
   `src-tauri/src/service.rs`, with the testable logic in `catalog.rs` (pack list, fallback,
   hot-reload reactions), `settings.rs` (persistence, clamping, volume curve), `input.rs` (gate,
   permission polling, the self-test's synthetic keyboard), `idle.rs` (idle sleep: the hook's
-  activity flag, the control thread's waker and the sleep decision), `loader.rs` (pack decoding
+  activity flag, the control thread's waker and the sleep decision), `keylabels.rs` (hotkey
+  labels from the keyboard layout: the pure key list and label helpers, and on macOS the
+  TIS/`UCKeyTranslate` reading and the input-source observer), `loader.rs` (pack decoding
   thread) and `hotkey.rs`.
 - **(M4)** Pure logic is kept out of the platform code and unit-tested: rule evaluation, gate
   composition and the 5 s rule-block timer in `src-tauri/src/rules.rs`; the auto-mute state
@@ -665,7 +687,8 @@ not part of this contract yet.
   after 4 s), `outputchange` (`muteOnOutputChange` on; 3 s in, the output moves to AirPods Pro)
   and `unsupported` (no per-app rules and no permission step, like Windows and Linux).
   `idle`: the output is asleep (`audioAsleep`) until muting or `set_idle_sleep_minutes`
-  ends it (the mock never types).
+  ends it (the mock never types). `azerty`: `key_labels` answers like a Mac set to French
+  AZERTY (otherwise `null`; the mock never sends `key-labels-changed`).
   **(M5)** `inputgroup` (Linux without the `input` group) and `listenerfail` (a Windows or Linux
   listener that failed to start; `relaunch` fixes it after 1.5 s). `unlisted` (like `denied`,
   but macOS adds nothing to the Input Monitoring list: `open_permission_settings` answers `false`

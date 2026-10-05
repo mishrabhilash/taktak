@@ -169,6 +169,7 @@ The self-test is headless: no windows, no tray and no keyboard listener. It:
 - checks per-app rule evaluation (each mode with a listed, an unlisted and an unknown frontmost app; nothing blocked where rules are unsupported; `add_rule_app`'s checks);
 - checks the auto-mute state machine (lock, inactive session, an armed output change that outlasts a lock until an unmute, no auto-mute while muted by hand or with the setting off, device changes by name);
 - checks the onboarding decision;
+- on macOS, reads the hotkey labels from the current keyboard layout (every letter labelled) and from the installed French layout without selecting it (the US M position prints ",", Q prints "a");
 - checks that settings are saved, reloaded and recovered from a corrupt file, and that a Milestone 3 file migrates (new fields defaulted, onboarding counted as done, a damaged rule list keeps its good entries);
 - drives the real service through pack switches, rejected ids, level clamping, mute and enable, a per-app rule closing the gate, and a hot-reloaded user pack that is selected, then broken on disk, then deleted;
 - checks that the service keeps the output closed while nothing can play, that a preview (at volume 0) opens it, and that it closes again when the preview is stopped and when the clip ends. Without an output device it checks that the preview is refused with a message;
@@ -276,6 +277,7 @@ The only warning was `second launches cannot reach TakTak: path must be shorter 
 - **Unsigned builds:** each rebuild loses Input Monitoring (see Signing), unless built with `npm run app` and a **TakTak Development** certificate.
 - **Per-app rules:** Spotlight, Raycast and Alfred panels report the previous app as frontmost. A rule block shorter than 5 s keeps the output open.
 - **Hotkeys on macOS:**
+  - The mute hotkey is a key position. Settings labels it with what the current layout prints there (`key_labels`, refreshed when you switch input source), so ⌘⌥⇧M shows as ⌥⇧⌘, on French AZERTY.
   - Carbon hotkey registration does not report shortcuts that other apps already use, so most conflicts can't be detected.
   - In the recorder, pressing the current mute shortcut toggles mute instead of being recorded, because the global hotkey gets the keys first.
 - **Preview:** `preview_pack` resolves once the clip plays and rejects with a message when it can't play. The button still shows "playing" for a fixed 2.2 s, because the contract has no "preview finished" event.

@@ -15,8 +15,8 @@ use crate::state::{
     AppInfo, AppRuleMode, AppState, LatencyReport, MechvibesImport, PickKind, VariantMode,
 };
 use crate::{
-    apps, automute, hotkey, idle, mechvibes, permission, relaunch as restart, rules, system, tray,
-    windows,
+    apps, automute, hotkey, idle, keylabels, mechvibes, permission, relaunch as restart, rules,
+    system, tray, windows,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -325,6 +325,14 @@ pub fn remove_rule_app(service: State<'_, Service>, id: String) -> AppState {
 #[tauri::command]
 pub fn set_mute_on_output_change(service: State<'_, Service>, enabled: bool) -> AppState {
     service.update(|s| automute::set_mute_on_output_change(s, enabled))
+}
+
+/// The current keyboard layout's label for each layout-dependent key position an accelerator
+/// can name (macOS; `None` elsewhere, and when the layout cannot be read). Display only: see
+/// [`keylabels`].
+#[tauri::command]
+pub fn key_labels() -> Option<keylabels::KeyLabels> {
+    keylabels::current()
 }
 
 /// Rounded and limited to `0..=`[`idle::MAX_MINUTES`] (non-finite → the default); 0 = never.
