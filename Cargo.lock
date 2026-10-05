@@ -2269,7 +2269,7 @@ dependencies = [
 
 [[package]]
 name = "mechvibes-import"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "taktak-core",
  "tempfile",
@@ -2812,7 +2812,7 @@ dependencies = [
 
 [[package]]
 name = "pack-maker"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "fastrand",
@@ -3981,7 +3981,7 @@ dependencies = [
 
 [[package]]
 name = "synth-packs"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "hound",
  "serde_json",
@@ -4004,7 +4004,7 @@ dependencies = [
 
 [[package]]
 name = "taktak"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "base64 0.22.1",
  "block2",
@@ -4032,7 +4032,7 @@ dependencies = [
 
 [[package]]
 name = "taktak-core"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "cpal",
  "dirs 7.0.0",
