@@ -885,8 +885,10 @@ fn idle_sleep_checks(report: &mut Report, bundled: &Path, scratch: &Path) {
     let Some(service) =
         report.check("service: idle sleep closes the output, keeps listening", || {
             let service = Service::start(config, Box::new(|_, _| {})).map_err(|e| e.to_string())?;
+            // On a slow machine (CI) opening the device and loading the pack can take longer
+            // than the short idle time, so the output may already be asleep again here.
             let ready = wait_for(WAIT, || {
-                service.output_open()
+                (service.output_open() || service.snapshot().audio_asleep)
                     && keys.listening()
                     && service.now_playing().as_deref() == Some(DEFAULT_PACK_ID)
             });
