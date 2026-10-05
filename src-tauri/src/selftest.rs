@@ -855,7 +855,7 @@ fn retired_selection(
 }
 
 /// The idle time in the idle-sleep checks: [`IDLE_MINUTES`] units of [`IDLE_UNIT`].
-const IDLE_UNIT: Duration = Duration::from_millis(100);
+const IDLE_UNIT: Duration = Duration::from_millis(400);
 const IDLE_MINUTES: u32 = 3;
 /// Sleep/wake cycles measured.
 const WAKE_CYCLES: usize = 7;
@@ -903,6 +903,10 @@ fn idle_sleep_checks(report: &mut Report, bundled: &Path, scratch: &Path) {
             keys.press(KeyAction::Down);
             keys.press(KeyAction::Up);
             let typed = Instant::now();
+            // If it was already asleep, that key press wakes it first; only then can it sleep again.
+            if !wait_for(WAIT, || service.output_open() && !service.snapshot().audio_asleep) {
+                return Err("the key press did not wake the output".into());
+            }
             if !wait_for(WAIT, || !service.output_open() && service.snapshot().audio_asleep) {
                 return Err("the output stayed open without typing".into());
             }
